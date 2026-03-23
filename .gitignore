@@ -1,2 +1,7 @@
 /.idea
 *.pyc
+legacy/Untitled
+ptcgp.egg-info/
+models/
+__pycache__/
+.pytest_cache/

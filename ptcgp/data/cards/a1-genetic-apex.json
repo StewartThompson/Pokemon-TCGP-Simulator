@@ -1,0 +1,586 @@
+[
+    {
+      "id": "a1-001",
+      "name": "Bulbasaur",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Basic",
+      "health": 70,
+      "set": "Genetic Apex (A1)",
+      "pack": "Mewtwo",
+      "attacks": [
+        {
+          "name": "Vine Whip",
+          "damage": "40",
+          "cost": [
+            "Grass",
+            "Colorless"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": null,
+      "rarity": "Common",
+            "image_url": "https://img.game8.co/3998332/91c4f79b2b3b4206205bf69db8dd3d1e.png/show"
+    },
+    {
+      "id": "a1-002",
+      "name": "Ivysaur",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Stage 1",
+      "health": 90,
+      "set": "Genetic Apex (A1)",
+      "pack": "Mewtwo",
+      "attacks": [
+        {
+          "name": "Razor Leaf",
+          "damage": "60",
+          "cost": [
+            "Grass",
+            "Colorless",
+            "Colorless"
+          ]
+        }
+      ],
+      "retreatCost": 2,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": "Bulbasaur",
+      "rarity": "Uncommon",
+      "image_url": "https://img.game8.co/4006820/34e0ae3e3a08bf4586263f804fd42d06.png/show"
+    },
+    {
+      "id": "a1-004",
+      "name": "Venusaur ex",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Stage 2",
+      "health": 190,
+      "set": "Genetic Apex (A1)",
+      "pack": "Mewtwo",
+      "attacks": [
+        {
+          "name": "Razor Leaf",
+          "damage": "60",
+          "cost": [
+            "Grass",
+            "Colorless",
+            "Colorless"
+          ]
+        },
+        {
+          "name": "Giant Bloom",
+          "effect": "Heal 30 damage from this Pokémon.",
+          "damage": "100",
+          "cost": [
+            "Grass",
+            "Grass",
+            "Colorless",
+            "Colorless"
+          ]
+        }
+      ],
+      "retreatCost": 3,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": "Ivysaur",
+      "rarity": "Rare EX"
+    },
+    {
+      "id": "a1-005",
+      "name": "Caterpie",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Basic",
+      "health": 50,
+      "set": "Genetic Apex (A1)",
+      "pack": "Pikachu",
+      "attacks": [
+        {
+          "name": "Find a Friend",
+          "effect": "Put 1 random Grass Pokémon from your deck into your hand.",
+          "damage": "",
+          "cost": [
+            "Colorless"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": null,
+      "rarity": "Common"
+    },
+    {
+      "id": "a1-006",
+      "name": "Metapod",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Stage 1",
+      "health": 80,
+      "set": "Genetic Apex (A1)",
+      "pack": "Pikachu",
+      "attacks": [
+        {
+          "name": "Bug Bite",
+          "damage": "30",
+          "cost": [
+            "Colorless",
+            "Colorless"
+          ]
+        }
+      ],
+      "retreatCost": 2,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": "Caterpie",
+      "rarity": "Common"
+    },
+    {
+      "id": "a1-007",
+      "name": "Butterfree",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Stage 2",
+      "health": 120,
+      "set": "Genetic Apex (A1)",
+      "pack": "Pikachu",
+      "attacks": [
+        {
+          "name": "Gust",
+          "damage": "60",
+          "cost": [
+            "Grass",
+            "Colorless",
+            "Colorless"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Fire",
+      "abilities": [
+        {
+          "name": "Powder Heal",
+          "effect": "Once during your turn, you may heal 20 damage from each of your Pokémon."
+        }
+      ],
+      "evolvesFrom": "Metapod",
+      "rarity": "Rare"
+    },
+    {
+      "id": "a1-008",
+      "name": "Weedle",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Basic",
+      "health": 50,
+      "set": "Genetic Apex (A1)",
+      "pack": "Mewtwo",
+      "attacks": [
+        {
+          "name": "Sting",
+          "damage": "20",
+          "cost": [
+            "Grass"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": null,
+      "rarity": "Common"
+    },
+    {
+      "id": "a1-009",
+      "name": "Kakuna",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Stage 1",
+      "health": 80,
+      "set": "Genetic Apex (A1)",
+      "pack": "Mewtwo",
+      "attacks": [
+        {
+          "name": "Bug Bite",
+          "damage": "30",
+          "cost": [
+            "Grass"
+          ]
+        }
+      ],
+      "retreatCost": 2,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": "Weedle",
+      "rarity": "Common"
+    },
+    {
+      "id": "a1-010",
+      "name": "Beedrill",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Stage 2",
+      "health": 120,
+      "set": "Genetic Apex (A1)",
+      "pack": "Mewtwo",
+      "attacks": [
+        {
+          "name": "Sharp Sting",
+          "damage": "70",
+          "cost": [
+            "Grass"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": "Kakuna",
+      "rarity": "Rare"
+    },
+    {
+      "id": "pa-005",
+      "name": "Poké Ball",
+      "element": null,
+      "type": "Trainer",
+      "subtype": "Item",
+      "health": null,
+      "set": "Promo-A",
+      "pack": null,
+      "attacks": [],
+      "retreatCost": null,
+      "weakness": null,
+      "abilities": [
+        {
+          "name": "Draw basic Pokémon",
+          "effect": "Draw 1 basic Pokémon card.",
+          "handler": "draw_basic_pokemon()"
+        }
+      ],
+      "evolvesFrom": null,
+      "rarity": null
+    },
+    {
+      "id": "pa-007",
+      "name": "Professor's Research",
+      "element": null,
+      "type": "Trainer",
+      "subtype": "Supporter",
+      "health": null,
+      "set": "Promo-A",
+      "pack": null,
+      "attacks": [],
+      "retreatCost": null,
+      "weakness": null,
+      "abilities": [
+        {
+          "name": "Draw 2 cards",
+          "effect": "Draw 2 cards.",
+          "handler": "draw_cards(2)"
+        }
+      ],
+      "evolvesFrom": null,
+      "rarity": null
+    },
+    {
+      "id": "pa-001",
+      "name": "Potion",
+      "element": null,
+      "type": "Trainer",
+      "subtype": "Item",
+      "health": null,
+      "set": "Promo-A",
+      "pack": null,
+      "attacks": [],
+      "retreatCost": null,
+      "weakness": null,
+      "abilities": [
+        {
+          "name": "Heal",
+          "effect": "Heal 20 damage from 1 of your Pokémon.",
+          "handler": "heal(20)"
+        }
+      ],
+      "evolvesFrom": null,
+      "rarity": null
+    },
+    {
+      "id": "a1-029",
+      "name": "Petilil",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Basic",
+      "health": 60,
+      "set": "Genetic Apex (A1)",
+      "pack": null,
+      "attacks": [
+        {
+          "name": "Blot",
+          "effect": "Heal 10 damage from this Pokémon.",
+          "damage": "10",
+          "cost": [
+            "Grass"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": null,
+      "rarity": "Common"
+    },
+    {
+      "id": "a1-030",
+      "name": "Lilligant",
+      "element": "Grass",
+      "type": "Pokemon",
+      "subtype": "Stage 1",
+      "health": 100,
+      "set": "Genetic Apex (A1)",
+      "pack": null,
+      "attacks": [
+        {
+          "name": "Leaf Supply",
+          "effect": "Take a Grass Energy from your Energy Zone and attach it to 1 of your Benched Grass Pokémon. (Bench 1)",
+          "damage": "50",
+          "cost": [
+            "Grass",
+            "Grass"
+          ],
+          "target": "pBench1"
+        },
+        {
+          "name": "Leaf Supply",
+          "effect": "Take a Grass Energy from your Energy Zone and attach it to 1 of your Benched Grass Pokémon. (Bench 2)",
+          "damage": "50",
+          "cost": [
+            "Grass",
+            "Grass"
+          ],
+          "target": "pBench2"
+        },
+        {
+          "name": "Leaf Supply",
+          "effect": "Take a Grass Energy from your Energy Zone and attach it to 1 of your Benched Grass Pokémon. (Bench 3)",
+          "damage": "50",
+          "cost": [
+            "Grass",
+            "Grass"
+          ],
+          "target": "pBench3"
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Fire",
+      "abilities": [],
+      "evolvesFrom": "Petilil",
+      "rarity": "Uncommon"
+    },
+    {
+      "id": "a2-147",
+      "name": "Giant Cape",
+      "element": null,
+      "type": "Trainer",
+      "subtype": "Tool",
+      "health": null,
+      "set": "Space-Time Smackdown (A2)",
+      "pack": "Dialga",
+      "attacks": [],
+      "retreatCost": null,
+      "weakness": null,
+      "abilities": [
+        {
+          "name": "Giant Cape",
+          "effect": "The Pokémon this card is attached to has +20 HP.",
+          "handler": "hp_bonus(20)"
+        }
+      ],
+      "evolvesFrom": null,
+      "rarity": "Uncommon"
+    },
+    {
+      "id": "a1-219",
+      "name": "Erika",
+      "element": null,
+      "type": "Trainer",
+      "subtype": "Supporter",
+      "health": null,
+      "set": "Genetic Apex (A1)",
+      "pack": "Charizard",
+      "attacks": [],
+      "retreatCost": null,
+      "weakness": null,
+      "abilities": [
+        {
+          "name": "Supporter",
+          "effect": "Heal 50 damage from 1 of your Grass Pokemon.",
+          "position": "pHand",
+          "target": "pActive"
+        }
+      ],
+      "evolvesFrom": null,
+      "rarity": "Uncommon"
+    },
+    {
+      "id": "a1-037",
+      "name": "Vulpix",
+      "element": "Fire",
+      "type": "Pokemon",
+      "subtype": "Basic",
+      "health": 50,
+      "set": "Genetic Apex (A1)",
+      "pack": "Charizard",
+      "attacks": [
+        {
+          "name": "Tail Whip",
+          "effect": "Flip a coin. If heads, the Defending Pokémon can't attack during your opponent's next turn.",
+          "damage": "",
+          "cost": [
+            "Colorless"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Water",
+      "abilities": [],
+      "evolvesFrom": null,
+      "rarity": "Common"
+    },
+    {
+      "id": "a1-038",
+      "name": "Ninetales",
+      "element": "Fire",
+      "type": "Pokemon",
+      "subtype": "Stage 1",
+      "health": 90,
+      "set": "Genetic Apex (A1)",
+      "pack": "Charizard",
+      "attacks": [
+        {
+          "name": "Flamethrower",
+          "effect": "Discard a Fire Energy from this Pokémon.",
+          "damage": "90",
+          "cost": [
+            "Fire",
+            "Fire"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Water",
+      "abilities": [],
+      "evolvesFrom": "Vulpix",
+      "rarity": "Uncommon"
+    },
+    {
+      "id": "a1-230",
+      "name": "Charmander",
+      "element": "Fire",
+      "type": "Pokemon",
+      "subtype": "Basic",
+      "health": 60,
+      "set": "Genetic Apex (A1)",
+      "pack": "Charizard",
+      "attacks": [
+        {
+          "name": "Ember",
+          "effect": "Discard a Fire Energy from this Pokémon.",
+          "damage": "30",
+          "cost": [
+            "Fire"
+          ]
+        }
+      ],
+      "retreatCost": 1,
+      "weakness": "Water",
+      "abilities": [],
+      "evolvesFrom": null,
+      "rarity": "Full Art"
+    },
+    {
+      "id": "a2b-010",
+      "name": "Charizard ex",
+      "element": "Fire",
+      "type": "Pokemon",
+      "subtype": "Stage 2",
+      "health": 180,
+      "set": "Shining Revelry (A2b)",
+      "pack": null,
+      "attacks": [
+        {
+          "name": "Stoke",
+          "effect": "Take 3 Fire Energy from your Energy Zone and attach it to this Pokémon.",
+          "damage": "",
+          "cost": [
+            "Fire"
+          ]
+        },
+        {
+          "name": "Steam Artillery",
+          "damage": "150",
+          "cost": [
+            "Fire",
+            "Fire",
+            "Fire",
+            "Colorless",
+            "Colorless"
+          ]
+        }
+      ],
+      "retreatCost": 3,
+      "weakness": "Water",
+      "abilities": [],
+      "evolvesFrom": "Charmeleon",
+      "rarity": "Rare EX"
+    },
+    {
+      "id": "a3-144",
+      "name": "Rare Candy",
+      "element": null,
+      "type": "Trainer",
+      "subtype": "Item",
+      "health": null,
+      "set": "Celestial Guardians (A3)",
+      "pack": null,
+      "attacks": [],
+      "retreatCost": null,
+      "weakness": null,
+      "abilities": [
+        {
+          "name": "Item",
+          "effect": "You may evolve a Basic Pokemon directly to a Stage 2 Pokemon this turn.",
+          "position": "pHand",
+          "target": "pActive"
+        }
+      ],
+      "evolvesFrom": null,
+      "rarity": "Uncommon"
+    },
+    {
+      "id": "a1-272",
+      "name": "Sabrina",
+      "element": null,
+      "type": "Trainer",
+      "subtype": "Supporter",
+      "health": null,
+      "set": "Genetic Apex (A1)",
+      "pack": "Charizard",
+      "attacks": [],
+      "retreatCost": null,
+      "weakness": null,
+      "abilities": [
+        {
+          "name": "Supporter",
+          "effect": "Switch out your opponent's Active Pokemon to the Bench. (Your opponent chooses the new Active Pokemon.)",
+          "position": "pHand",
+          "target": "oActive"
+        }
+      ],
+      "evolvesFrom": null,
+      "rarity": "Full Art EX/Support"
+    }
+  ]

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ptcgp"
+version = "1.0.0"
+description = "Pokemon TCG Pocket Battle Simulator with ML"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "rich>=13.0",
+    "click>=8.0",
+    "gymnasium>=0.29",
+    "stable-baselines3>=2.3",
+    "torch>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov"]
+
+[project.scripts]
+ptcgp = "ptcgp.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ptcgp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_engine.py", "test_integration.py"]

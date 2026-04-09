@@ -5,3 +5,5 @@ ptcgp.egg-info/
 models/
 __pycache__/
 .pytest_cache/
+.DS_Store
+.vscode/launch.json

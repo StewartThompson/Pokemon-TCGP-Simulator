@@ -229,7 +229,7 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
     // EVOLVE  (not on turn 0 or 1)
     // ------------------------------------------------------------------ //
     if state.turn_number >= 2 {
-        // Re-borrow player each iteration to avoid lifetime issues.
+        // Snapshot hand to avoid re-borrow issues.
         let hand_snapshot: Vec<u16> = state.current().hand.clone();
         for (i, &card_idx) in hand_snapshot.iter().enumerate() {
             let evo_card = db.get_by_idx(card_idx);
@@ -376,7 +376,7 @@ pub fn get_legal_promotions(state: &GameState, player_index: usize) -> Vec<Actio
 mod tests {
     use super::*;
     use crate::state::{GameState, PokemonSlot};
-    use crate::types::{GamePhase, ActionKind};
+    use crate::types::{ActionKind, GamePhase};
 
     fn minimal_state_main() -> GameState {
         let mut state = GameState::new(0);
@@ -514,7 +514,10 @@ mod tests {
         };
 
         let actions = get_legal_actions(&state, &db);
-        let attach_count = actions.iter().filter(|a| a.kind == ActionKind::AttachEnergy).count();
+        let attach_count = actions
+            .iter()
+            .filter(|a| a.kind == ActionKind::AttachEnergy)
+            .count();
         assert_eq!(attach_count, 1, "One ATTACH_ENERGY action for active slot");
     }
 
@@ -528,7 +531,10 @@ mod tests {
         assert!(can_pay_cost(&slot, &[CostSymbol::Fire, CostSymbol::Colorless]));
 
         // Cost: [Fire, Fire, Colorless] — fail (only 2 fire, 2 typed + 1 colorless needs 3)
-        assert!(!can_pay_cost(&slot, &[CostSymbol::Fire, CostSymbol::Fire, CostSymbol::Colorless]));
+        assert!(!can_pay_cost(
+            &slot,
+            &[CostSymbol::Fire, CostSymbol::Fire, CostSymbol::Colorless]
+        ));
 
         // Cost: [Water] — fail (no water)
         assert!(!can_pay_cost(&slot, &[CostSymbol::Water]));

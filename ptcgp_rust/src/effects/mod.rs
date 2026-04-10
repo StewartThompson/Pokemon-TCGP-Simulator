@@ -1,6 +1,13 @@
 use std::collections::HashMap;
 
 pub mod dispatch;
+pub mod status_handlers;
+pub mod heal_handlers;
+pub mod draw_handlers;
+pub mod energy_handlers;
+pub mod movement_handlers;
+pub mod damage_mod_handlers;
+pub mod misc_handlers;
 
 // ------------------------------------------------------------------ //
 // Effect context

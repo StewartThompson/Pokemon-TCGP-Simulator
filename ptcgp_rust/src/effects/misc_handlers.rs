@@ -1,0 +1,674 @@
+#![allow(dead_code, unused_imports, unused_variables)]
+use rand::Rng;
+use rand::seq::SliceRandom;
+use crate::card::CardDb;
+use crate::state::{GameState, get_slot_mut};
+use crate::actions::SlotRef;
+use crate::effects::EffectContext;
+use crate::types::{CardKind, Stage};
+
+// ------------------------------------------------------------------ //
+// Misc: next-turn flags on opponent
+// ------------------------------------------------------------------ //
+
+/// Prevent the opponent's active Pokémon from retreating during their next turn.
+pub fn cant_retreat_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    let opp = 1 - ctx.acting_player;
+    if let Some(slot) = state.players[opp].active.as_mut() {
+        slot.cant_retreat_next_turn = true;
+    }
+}
+
+/// Prevent the opponent's active Pokémon from attacking during their next turn
+/// (coin-flip gating is handled at the call site; this simply sets the flag).
+pub fn cant_attack_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    let opp = 1 - ctx.acting_player;
+    if let Some(slot) = state.players[opp].active.as_mut() {
+        slot.cant_attack_next_turn = true;
+    }
+}
+
+/// Coin-flip version: on heads (50 %), set cant_attack_next_turn on the opponent's active.
+pub fn coin_flip_attack_block_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    if state.rng.gen_bool(0.5) {
+        let opp = 1 - ctx.acting_player;
+        if let Some(slot) = state.players[opp].active.as_mut() {
+            slot.cant_attack_next_turn = true;
+        }
+    }
+}
+
+/// Coin-flip version: on tails (50 %), the source Pokémon cannot attack next turn.
+pub fn coin_flip_self_cant_attack_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    if state.rng.gen_bool(0.5) {
+        // tails means the pokemon cannot attack
+        let p = ctx.acting_player;
+        if let Some(slot) = state.players[p].active.as_mut() {
+            slot.cant_attack_next_turn = true;
+        }
+    }
+}
+
+/// This Pokémon cannot attack during the acting player's next turn.
+pub fn self_cant_attack_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.cant_attack_next_turn = true;
+    }
+}
+
+/// This Pokémon cannot use a specific attack next turn.
+/// Simplified to block all attacks (mirrors the Python behaviour).
+pub fn self_cant_use_specific_attack(state: &mut GameState, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.cant_attack_next_turn = true;
+    }
+}
+
+/// Grant the acting player's active a self-attack buff for its next turn.
+pub fn self_attack_buff_next_turn(state: &mut GameState, amount: i8, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.attack_bonus_next_turn_self = amount;
+    }
+}
+
+/// Coin-flip: on heads, prevent all damage to the source Pokémon next turn.
+pub fn prevent_damage_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    if state.rng.gen_bool(0.5) {
+        let p = ctx.acting_player;
+        if let Some(slot) = state.players[p].active.as_mut() {
+            slot.prevent_damage_next_turn = true;
+        }
+    }
+}
+
+/// Source Pokémon takes –amount damage from attacks on the opponent's next turn.
+pub fn take_less_damage_next_turn(state: &mut GameState, amount: i8, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.incoming_damage_reduction = amount;
+    }
+}
+
+/// The attacking player's active takes +amount MORE damage next turn (negative reduction).
+pub fn take_more_damage_next_turn(state: &mut GameState, amount: i8, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.incoming_damage_reduction = -(amount);
+    }
+}
+
+/// Defending Pokémon's attacks do –amount damage during the opponent's next turn.
+pub fn defender_attacks_do_less_damage(state: &mut GameState, amount: i8, ctx: &EffectContext) {
+    let opp = 1 - ctx.acting_player;
+    if let Some(slot) = state.players[opp].active.as_mut() {
+        slot.attack_bonus_next_turn_self = -(amount);
+    }
+}
+
+/// Simplified stand-in for next_turn_all_damage_reduction (damage pipeline handles the real check).
+/// Sets incoming_damage_reduction on the source Pokémon.
+pub fn next_turn_all_damage_reduction(state: &mut GameState, amount: i8, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.incoming_damage_reduction = amount;
+    }
+}
+
+/// Same as next_turn_all_damage_reduction but restricted to Metal-type attackers.
+/// The damage pipeline should check the attacker type; we store the same field as a hint.
+pub fn next_turn_metal_damage_reduction(state: &mut GameState, amount: i8, ctx: &EffectContext) {
+    // The damage pipeline checks the attacker's type; storing the reduction unconditionally
+    // here is a simplification that matches the Python behaviour for now.
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.incoming_damage_reduction = amount;
+    }
+}
+
+// ------------------------------------------------------------------ //
+// Misc: player-level flags
+// ------------------------------------------------------------------ //
+
+/// Block the opponent from playing Supporter cards on their next turn.
+pub fn opponent_no_supporter_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    let opp = 1 - ctx.acting_player;
+    state.players[opp].cant_play_supporter_incoming = true;
+}
+
+/// Block the opponent from playing Item cards on their next turn.
+/// TODO: PlayerState does not yet have cant_play_items_incoming; no-op until added.
+pub fn opponent_no_items_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    // TODO: add `cant_play_items_incoming: bool` to PlayerState and set it here.
+    let _ = (state, ctx);
+}
+
+/// Block the opponent from taking Energy from the Energy Zone on their next turn.
+/// TODO: PlayerState does not yet have cant_take_energy_incoming; no-op until added.
+pub fn opponent_no_energy_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    // TODO: add `cant_take_energy_incoming: bool` to PlayerState and set it here.
+    let _ = (state, ctx);
+}
+
+/// Raise the opponent's retreat / attack costs by amount next turn.
+/// Simplified: sets cant_retreat_next_turn on the opponent's active (mirrors Python stub).
+pub fn opponent_cost_increase_next_turn(state: &mut GameState, ctx: &EffectContext) {
+    let opp = 1 - ctx.acting_player;
+    if let Some(slot) = state.players[opp].active.as_mut() {
+        slot.cant_retreat_next_turn = true;
+    }
+}
+
+// ------------------------------------------------------------------ //
+// Misc: trainer / supporter damage buffs
+// ------------------------------------------------------------------ //
+
+/// Giovanni / Blaine: buff this turn's attack damage by `amount`.
+/// If `names` is non-empty, the buff only applies when the attacker matches one of those names.
+pub fn supporter_damage_aura(
+    state: &mut GameState,
+    amount: i8,
+    names: &[String],
+    ctx: &EffectContext,
+) {
+    let p = ctx.acting_player;
+    let player = &mut state.players[p];
+    if amount > player.attack_damage_bonus {
+        player.attack_damage_bonus = amount;
+    }
+    if !names.is_empty() {
+        player.attack_damage_bonus_names = names.to_vec();
+    }
+}
+
+/// Variant of supporter_damage_aura restricted to EX Pokémon targets.
+/// The damage pipeline reads attack_damage_bonus_names to filter; this sets the amount.
+pub fn supporter_damage_aura_vs_ex(state: &mut GameState, amount: i8, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    let player = &mut state.players[p];
+    if amount > player.attack_damage_bonus {
+        player.attack_damage_bonus = amount;
+    }
+    // The name filter "ex" acts as a sentinel; the damage pipeline must handle it.
+    player.attack_damage_bonus_names = vec!["ex".to_string()];
+}
+
+/// X Speed: reduce the retreat cost of the acting player's Active Pokémon by `amount` this turn.
+pub fn reduce_retreat_cost(state: &mut GameState, amount: i8, ctx: &EffectContext) {
+    state.players[ctx.acting_player].retreat_cost_modifier -= amount;
+}
+
+// ------------------------------------------------------------------ //
+// Copy attack — complex, no-op for now
+// ------------------------------------------------------------------ //
+
+/// Mew / Mewtwo copy: re-dispatch opponent's attack.
+/// TODO: properly implement by re-entering execute_attack with the chosen opponent attack.
+pub fn copy_opponent_attack(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
+    // TODO: select opponent attack and re-dispatch through execute_attack.
+    let _ = (state, db, ctx);
+}
+
+// ------------------------------------------------------------------ //
+// Item-card effects
+// ------------------------------------------------------------------ //
+
+/// Full Heal: cure all special status conditions on the acting player's active.
+pub fn full_heal(state: &mut GameState, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.status = 0;
+    }
+}
+
+/// Potion: heal `amount` damage from the acting player's active Pokémon.
+pub fn potion_heal(state: &mut GameState, amount: i16, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.current_hp = (slot.current_hp + amount).min(slot.max_hp);
+    }
+}
+
+/// Pokéball search: put a random Basic Pokémon from the deck into the hand.
+pub fn pokeball_search(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    let basic_indices: Vec<usize> = state.players[p]
+        .deck
+        .iter()
+        .enumerate()
+        .filter(|(_, &idx)| {
+            let card = db.get_by_idx(idx);
+            card.kind == CardKind::Pokemon && card.stage == Some(Stage::Basic)
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    if basic_indices.is_empty() {
+        return;
+    }
+
+    let chosen_pos = basic_indices[state.rng.gen_range(0..basic_indices.len())];
+    let card_idx = state.players[p].deck.remove(chosen_pos);
+    state.players[p].hand.push(card_idx);
+}
+
+/// Big Malasada: heal 20 damage and cure all status conditions on the active Pokémon.
+pub fn big_malasada(state: &mut GameState, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.current_hp = (slot.current_hp + 20).min(slot.max_hp);
+        slot.status = 0;
+    }
+}
+
+/// Mythical Slab: look at the top card of your deck; if it's a Psychic Pokémon, add it to hand.
+/// Simplified: put it in hand if it's a Psychic Pokémon; otherwise leave it on top.
+pub fn mythical_slab(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
+    let p = ctx.acting_player;
+    if state.players[p].deck.is_empty() {
+        return;
+    }
+    let top_idx = state.players[p].deck[0];
+    let card = db.get_by_idx(top_idx);
+    if card.kind == CardKind::Pokemon
+        && card.element == Some(crate::types::Element::Psychic)
+    {
+        state.players[p].deck.remove(0);
+        state.players[p].hand.push(top_idx);
+    }
+    // Otherwise leave the card on top of the deck.
+}
+
+/// Beast Wall Protection: passive — handled structurally by the damage pipeline.
+/// No state mutation needed; this is a no-op registration marker.
+pub fn beast_wall_protection(state: &mut GameState, ctx: &EffectContext) {
+    // PASSIVE: handled structurally by the damage pipeline.
+    let _ = (state, ctx);
+}
+
+/// Rare Candy Evolve: evolve a Basic Pokémon directly to Stage 2.
+/// The acting engine already validates the evolution path; this handler just performs the swap.
+///
+/// ctx.extra encoding:
+///   "evo_card_idx"  — u16 card index of the Stage 2 card (stored as i32)
+///   "evo_hand_pos"  — index into the acting player's hand
+///   "target_slot"   — encoded target slot: player*10 + (bench+1), 0 = active
+pub fn rare_candy_evolve(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
+    let evo_card_idx = match ctx.extra.get("evo_card_idx") {
+        Some(&v) if v >= 0 => v as u16,
+        _ => return,
+    };
+
+    // Resolve target slot from extra; default to acting player's active.
+    let target = if let Some(&raw) = ctx.extra.get("target_slot") {
+        let player = (raw / 10) as usize;
+        let slot_enc = raw % 10;
+        if slot_enc == 0 {
+            SlotRef::active(player)
+        } else {
+            SlotRef::bench(player, (slot_enc - 1) as usize)
+        }
+    } else {
+        SlotRef::active(ctx.acting_player)
+    };
+
+    let new_hp = db.get_by_idx(evo_card_idx).hp;
+
+    if let Some(slot) = get_slot_mut(state, target) {
+        let damage_taken = slot.max_hp - slot.current_hp;
+        slot.card_idx = evo_card_idx;
+        slot.max_hp = new_hp;
+        slot.current_hp = (new_hp - damage_taken).max(0);
+        slot.status = 0;
+        slot.evolved_this_turn = true;
+        slot.ability_used_this_turn = false;
+    }
+
+    // Remove Stage 2 card from hand.
+    if let Some(&hand_pos) = ctx.extra.get("evo_hand_pos") {
+        let p = ctx.acting_player;
+        let hand_pos = hand_pos as usize;
+        if hand_pos < state.players[p].hand.len()
+            && state.players[p].hand[hand_pos] == evo_card_idx
+        {
+            state.players[p].hand.remove(hand_pos);
+        }
+    }
+}
+
+/// HP Bonus (Giant Cape): increase the target Pokémon's max_hp and current_hp by `amount`.
+/// Called when the tool is attached.
+///
+/// ctx.extra["target_slot"] encodes the slot: player*10 + (bench+1), 0 = active.
+/// Defaults to acting player's active if not present.
+pub fn hp_bonus(state: &mut GameState, amount: i16, ctx: &EffectContext) {
+    let target = if let Some(&raw) = ctx.extra.get("target_slot") {
+        let player = (raw / 10) as usize;
+        let slot_enc = raw % 10;
+        if slot_enc == 0 {
+            SlotRef::active(player)
+        } else {
+            SlotRef::bench(player, (slot_enc - 1) as usize)
+        }
+    } else {
+        SlotRef::active(ctx.acting_player)
+    };
+    if let Some(slot) = get_slot_mut(state, target) {
+        slot.max_hp += amount;
+        slot.current_hp += amount;
+    }
+}
+
+// ------------------------------------------------------------------ //
+// Passive tool / ability markers — no-op; handled by the damage pipeline
+// ------------------------------------------------------------------ //
+
+/// Passive damage reduction marker (e.g. Rocky Helmet style defend-side).
+/// Actual reduction is applied in the damage pipeline; this is a no-op registration.
+pub fn passive_damage_reduction(state: &mut GameState, ctx: &EffectContext) {
+    let _ = (state, ctx);
+}
+
+/// Passive retaliate marker (Rocky Helmet).
+/// Actual retaliation is applied in attack.rs; this is a no-op registration.
+pub fn passive_retaliate(state: &mut GameState, ctx: &EffectContext) {
+    let _ = (state, ctx);
+}
+
+/// Passive block supporters marker (Hex Maniac style).
+pub fn passive_block_supporters(state: &mut GameState, ctx: &EffectContext) {
+    let _ = (state, ctx);
+}
+
+/// Passive Ditto impostor marker.
+pub fn passive_ditto_impostor(state: &mut GameState, ctx: &EffectContext) {
+    let _ = (state, ctx);
+}
+
+// ------------------------------------------------------------------ //
+// Discard-from-hand helpers
+// ------------------------------------------------------------------ //
+
+/// Discard a random Pokémon Tool card from the opponent's hand.
+pub fn discard_random_tool_from_hand(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
+    let opp = 1 - ctx.acting_player;
+    let tool_indices: Vec<usize> = state.players[opp]
+        .hand
+        .iter()
+        .enumerate()
+        .filter(|(_, &idx)| db.get_by_idx(idx).kind == CardKind::Tool)
+        .map(|(i, _)| i)
+        .collect();
+
+    if tool_indices.is_empty() {
+        return;
+    }
+
+    let chosen = tool_indices[state.rng.gen_range(0..tool_indices.len())];
+    let card = state.players[opp].hand.remove(chosen);
+    state.players[opp].discard.push(card);
+}
+
+/// Discard a random Item card from the opponent's hand.
+pub fn discard_random_item_from_hand(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
+    let opp = 1 - ctx.acting_player;
+    let item_indices: Vec<usize> = state.players[opp]
+        .hand
+        .iter()
+        .enumerate()
+        .filter(|(_, &idx)| db.get_by_idx(idx).kind == CardKind::Item)
+        .map(|(i, _)| i)
+        .collect();
+
+    if item_indices.is_empty() {
+        return;
+    }
+
+    let chosen = item_indices[state.rng.gen_range(0..item_indices.len())];
+    let card = state.players[opp].hand.remove(chosen);
+    state.players[opp].discard.push(card);
+}
+
+/// Discard a random card from the opponent's hand (coin-flip wrapper; flip is handled here).
+pub fn discard_random_card_opponent(state: &mut GameState, ctx: &EffectContext) {
+    if !state.rng.gen_bool(0.5) {
+        return;
+    }
+    let opp = 1 - ctx.acting_player;
+    if state.players[opp].hand.is_empty() {
+        return;
+    }
+    let len = state.players[opp].hand.len();
+    let idx = state.rng.gen_range(0..len);
+    let card = state.players[opp].hand.remove(idx);
+    state.players[opp].discard.push(card);
+}
+
+/// Coin-flip: on heads, take a random card from opponent's hand and shuffle it into their deck.
+pub fn coin_flip_shuffle_opponent_card(state: &mut GameState, ctx: &EffectContext) {
+    if !state.rng.gen_bool(0.5) {
+        return;
+    }
+    let opp = 1 - ctx.acting_player;
+    if state.players[opp].hand.is_empty() {
+        return;
+    }
+    let len = state.players[opp].hand.len();
+    let idx = state.rng.gen_range(0..len);
+    let card = state.players[opp].hand.remove(idx);
+    state.players[opp].deck.push(card);
+    state.players[opp].deck.shuffle(&mut state.rng);
+}
+
+/// Flip `count` coins; for each heads, shuffle a random card from opponent's hand into their deck.
+pub fn multi_coin_shuffle_opponent_cards(state: &mut GameState, count: u8, ctx: &EffectContext) {
+    let heads: u8 = (0..count).map(|_| state.rng.gen_bool(0.5) as u8).sum();
+    if heads == 0 {
+        return;
+    }
+    let opp = 1 - ctx.acting_player;
+    for _ in 0..heads {
+        if state.players[opp].hand.is_empty() {
+            break;
+        }
+        let len = state.players[opp].hand.len();
+        let idx = state.rng.gen_range(0..len);
+        let card = state.players[opp].hand.remove(idx);
+        state.players[opp].deck.push(card);
+    }
+    if !state.players[opp].deck.is_empty() {
+        state.players[opp].deck.shuffle(&mut state.rng);
+    }
+}
+
+// ------------------------------------------------------------------ //
+// Unit tests
+// ------------------------------------------------------------------ //
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{GameState, PokemonSlot};
+
+    fn make_state() -> GameState {
+        let mut state = GameState::new(42);
+        // Place a basic Pokémon in each player's active slot.
+        state.players[0].active = Some(PokemonSlot::new(0, 100));
+        state.players[1].active = Some(PokemonSlot::new(0, 100));
+        state
+    }
+
+    fn make_ctx(acting_player: usize) -> EffectContext {
+        EffectContext::new(acting_player)
+    }
+
+    // ---- cant_retreat_next_turn ----
+
+    #[test]
+    fn test_cant_retreat_sets_flag_on_opponent() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+
+        // Before: flag is false
+        assert!(!state.players[1].active.as_ref().unwrap().cant_retreat_next_turn);
+
+        cant_retreat_next_turn(&mut state, &ctx);
+
+        // After: flag is true on opponent (player 1)
+        assert!(state.players[1].active.as_ref().unwrap().cant_retreat_next_turn);
+        // Acting player's flag is untouched
+        assert!(!state.players[0].active.as_ref().unwrap().cant_retreat_next_turn);
+    }
+
+    #[test]
+    fn test_cant_retreat_player1_acting() {
+        let mut state = make_state();
+        let ctx = make_ctx(1);
+        cant_retreat_next_turn(&mut state, &ctx);
+        // Player 1 is acting, so player 0 is the opponent
+        assert!(state.players[0].active.as_ref().unwrap().cant_retreat_next_turn);
+        assert!(!state.players[1].active.as_ref().unwrap().cant_retreat_next_turn);
+    }
+
+    // ---- full_heal ----
+
+    #[test]
+    fn test_full_heal_clears_all_status_bits() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+
+        // Set a non-zero status on the acting player's active
+        state.players[0].active.as_mut().unwrap().status = 0b1111_1111;
+
+        full_heal(&mut state, &ctx);
+
+        assert_eq!(state.players[0].active.as_ref().unwrap().status, 0);
+        // Opponent's status should be untouched
+        assert_eq!(state.players[1].active.as_ref().unwrap().status, 0);
+    }
+
+    #[test]
+    fn test_full_heal_no_panic_if_no_active() {
+        let mut state = GameState::new(1);
+        let ctx = make_ctx(0);
+        // No active Pokémon — should not panic
+        full_heal(&mut state, &ctx);
+    }
+
+    // ---- potion_heal ----
+
+    #[test]
+    fn test_potion_heal_restores_hp() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+        state.players[0].active.as_mut().unwrap().current_hp = 60;
+
+        potion_heal(&mut state, 30, &ctx);
+
+        assert_eq!(state.players[0].active.as_ref().unwrap().current_hp, 90);
+    }
+
+    #[test]
+    fn test_potion_heal_does_not_exceed_max_hp() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+        // Already at max
+        potion_heal(&mut state, 50, &ctx);
+        assert_eq!(state.players[0].active.as_ref().unwrap().current_hp, 100);
+    }
+
+    // ---- self_attack_buff_next_turn ----
+
+    #[test]
+    fn test_self_attack_buff_next_turn_sets_field() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+        self_attack_buff_next_turn(&mut state, 20, &ctx);
+        assert_eq!(
+            state.players[0].active.as_ref().unwrap().attack_bonus_next_turn_self,
+            20
+        );
+    }
+
+    // ---- take_less_damage_next_turn ----
+
+    #[test]
+    fn test_take_less_damage_stores_reduction() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+        take_less_damage_next_turn(&mut state, 30, &ctx);
+        assert_eq!(
+            state.players[0].active.as_ref().unwrap().incoming_damage_reduction,
+            30
+        );
+    }
+
+    // ---- take_more_damage_next_turn ----
+
+    #[test]
+    fn test_take_more_damage_stores_negative_reduction() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+        take_more_damage_next_turn(&mut state, 30, &ctx);
+        assert_eq!(
+            state.players[0].active.as_ref().unwrap().incoming_damage_reduction,
+            -30
+        );
+    }
+
+    // ---- opponent_no_supporter_next_turn ----
+
+    #[test]
+    fn test_opponent_no_supporter_sets_flag() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+        assert!(!state.players[1].cant_play_supporter_incoming);
+        opponent_no_supporter_next_turn(&mut state, &ctx);
+        assert!(state.players[1].cant_play_supporter_incoming);
+        assert!(!state.players[0].cant_play_supporter_incoming);
+    }
+
+    // ---- reduce_retreat_cost ----
+
+    #[test]
+    fn test_reduce_retreat_cost_lowers_modifier() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+        assert_eq!(state.players[0].retreat_cost_modifier, 0);
+        reduce_retreat_cost(&mut state, 1, &ctx);
+        assert_eq!(state.players[0].retreat_cost_modifier, -1);
+    }
+
+    // ---- big_malasada ----
+
+    #[test]
+    fn test_big_malasada_heals_and_cures() {
+        let mut state = make_state();
+        let ctx = make_ctx(0);
+        state.players[0].active.as_mut().unwrap().current_hp = 70;
+        state.players[0].active.as_mut().unwrap().status = 0b0000_0011;
+
+        big_malasada(&mut state, &ctx);
+
+        let active = state.players[0].active.as_ref().unwrap();
+        assert_eq!(active.current_hp, 90);
+        assert_eq!(active.status, 0);
+    }
+
+    // ---- hp_bonus ----
+
+    #[test]
+    fn test_hp_bonus_increases_max_and_current_hp() {
+        let mut state = make_state();
+        // Default: no target_slot in extra => acts on acting player's active
+        let ctx = make_ctx(0);
+
+        hp_bonus(&mut state, 20, &ctx);
+
+        let active = state.players[0].active.as_ref().unwrap();
+        assert_eq!(active.max_hp, 120);
+        assert_eq!(active.current_hp, 120);
+    }
+}

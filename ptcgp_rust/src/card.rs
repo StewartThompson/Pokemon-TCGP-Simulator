@@ -24,6 +24,13 @@ impl EffectKind {
     pub fn new(name: impl Into<String>) -> Self {
         Self { name: name.into(), params: HashMap::new() }
     }
+
+    /// Convert this placeholder EffectKind to the real effects::EffectKind by
+    /// re-parsing the handler name string.  Returns the first parsed variant,
+    /// or None if the name is unknown.
+    pub fn to_real(&self) -> Option<crate::effects::EffectKind> {
+        crate::effects::parse_handler_string(&self.name).into_iter().next()
+    }
 }
 
 // -------------------------------------------------------------------------- //

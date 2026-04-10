@@ -83,12 +83,27 @@ pub struct CardDb {
 }
 
 impl CardDb {
+    /// Construct an empty CardDb (useful for tests that don't need card lookup).
+    pub fn new_empty() -> Self {
+        Self {
+            cards: Vec::new(),
+            id_to_idx: HashMap::new(),
+            name_to_indices: HashMap::new(),
+            basic_to_stage2: HashMap::new(),
+        }
+    }
+
     pub fn get_by_id(&self, id: &str) -> Option<&Card> {
         self.id_to_idx.get(id).map(|&i| &self.cards[i as usize])
     }
 
     pub fn get_by_idx(&self, idx: u16) -> &Card {
         &self.cards[idx as usize]
+    }
+
+    /// Safe variant of `get_by_idx` that returns None if out of range.
+    pub fn try_get_by_idx(&self, idx: u16) -> Option<&Card> {
+        self.cards.get(idx as usize)
     }
 
     pub fn get_idx_by_id(&self, id: &str) -> Option<u16> {

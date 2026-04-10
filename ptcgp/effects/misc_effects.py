@@ -744,3 +744,702 @@ def passive_opponent_attack_cost_increase(ctx: EffectContext) -> GameState:
 def passive_move_damage_to_self(ctx: EffectContext) -> GameState:
     # PASSIVE: handled structurally
     return ctx.state
+
+
+# -------------------------------------------------------------------------
+# New trainer card effects — batch 2
+# -------------------------------------------------------------------------
+
+@register_effect("discard_all_opponent_tools")
+def discard_all_opponent_tools(ctx: EffectContext) -> GameState:
+    """Guzma: discard all Pokemon Tool cards from all of opponent's Pokemon."""
+    opp_idx = 1 - ctx.acting_player
+    state = ctx.state.copy()
+    p = state.players[opp_idx]
+    if p.active is not None and p.active.tool_card_id:
+        new_active = p.active.copy()
+        p.discard.append(new_active.tool_card_id)
+        new_active.tool_card_id = None
+        p.active = new_active
+    for i, s in enumerate(p.bench):
+        if s is not None and s.tool_card_id:
+            new_bench = s.copy()
+            p.discard.append(new_bench.tool_card_id)
+            new_bench.tool_card_id = None
+            p.bench[i] = new_bench
+    return state
+
+
+@register_effect("heal_stage2_target")
+def heal_stage2_target(ctx: EffectContext, amount: int) -> GameState:
+    """Lillie: heal N damage from 1 of your Stage 2 Pokemon (most damaged)."""
+    from ptcgp.cards.database import get_card as _get_card
+    state = ctx.state
+    pi = ctx.acting_player
+    player = state.players[pi]
+    best_ref = None
+    best_dmg = 0
+    # Check active
+    if player.active is not None:
+        try:
+            if _get_card(player.active.card_id).stage == Stage.STAGE_2:
+                dmg = player.active.max_hp - player.active.current_hp
+                if dmg > best_dmg:
+                    best_dmg = dmg
+                    best_ref = SlotRef.active(pi)
+        except KeyError:
+            pass
+    # Check bench
+    for i, s in enumerate(player.bench):
+        if s is None:
+            continue
+        try:
+            if _get_card(s.card_id).stage == Stage.STAGE_2:
+                dmg = s.max_hp - s.current_hp
+                if dmg > best_dmg:
+                    best_dmg = dmg
+                    best_ref = SlotRef.bench(pi, i)
+        except KeyError:
+            pass
+    if best_ref is None:
+        return state
+    return mutate_slot(
+        state, best_ref,
+        lambda s: setattr(s, "current_hp", min(s.max_hp, s.current_hp + amount)),
+    )
+
+
+@register_effect("heal_all_named_discard_energy")
+def heal_all_named_discard_energy(ctx: EffectContext, names: tuple = ()) -> GameState:
+    """Mallow: heal all damage from 1 of your named Pokemon, discard all energy."""
+    from ptcgp.cards.database import get_card as _get_card
+    state = ctx.state
+    pi = ctx.acting_player
+    player = state.players[pi]
+    name_set = {n.lower() for n in names}
+
+    # Find most damaged matching Pokemon
+    best_ref = None
+    best_dmg = 0
+    if player.active is not None:
+        try:
+            if _get_card(player.active.card_id).name.lower() in name_set:
+                dmg = player.active.max_hp - player.active.current_hp
+                if dmg > best_dmg:
+                    best_dmg = dmg
+                    best_ref = SlotRef.active(pi)
+        except KeyError:
+            pass
+    for i, s in enumerate(player.bench):
+        if s is None:
+            continue
+        try:
+            if _get_card(s.card_id).name.lower() in name_set:
+                dmg = s.max_hp - s.current_hp
+                if dmg > best_dmg:
+                    best_dmg = dmg
+                    best_ref = SlotRef.bench(pi, i)
+        except KeyError:
+            pass
+    if best_ref is None:
+        return state
+    # Heal all damage
+    state = mutate_slot(
+        state, best_ref,
+        lambda s: setattr(s, "current_hp", s.max_hp),
+    )
+    # Discard all energy
+    state = mutate_slot(
+        state, best_ref,
+        lambda s: s.attached_energy.clear(),
+    )
+    return state
+
+
+@register_effect("move_damage_to_opponent")
+def move_damage_to_opponent(ctx: EffectContext, names: tuple = (), amount: int = 40) -> GameState:
+    """Acerola: move N damage from one of your named Pokemon to opponent's Active."""
+    from ptcgp.cards.database import get_card as _get_card
+    state = ctx.state
+    pi = ctx.acting_player
+    opp_idx = 1 - pi
+    player = state.players[pi]
+    name_set = {n.lower() for n in names}
+
+    # Find matching Pokemon with damage
+    source_ref = None
+    if player.active is not None:
+        try:
+            if _get_card(player.active.card_id).name.lower() in name_set:
+                if player.active.max_hp - player.active.current_hp > 0:
+                    source_ref = SlotRef.active(pi)
+        except KeyError:
+            pass
+    if source_ref is None:
+        for i, s in enumerate(player.bench):
+            if s is None:
+                continue
+            try:
+                if _get_card(s.card_id).name.lower() in name_set:
+                    if s.max_hp - s.current_hp > 0:
+                        source_ref = SlotRef.bench(pi, i)
+                        break
+            except KeyError:
+                pass
+    if source_ref is None:
+        return state
+
+    slot = get_slot(state, source_ref)
+    actual_damage = min(amount, slot.max_hp - slot.current_hp)
+    if actual_damage <= 0:
+        return state
+
+    # Heal source
+    state = mutate_slot(
+        state, source_ref,
+        lambda s: setattr(s, "current_hp", min(s.max_hp, s.current_hp + actual_damage)),
+    )
+    # Damage opponent active
+    opp_ref = SlotRef.active(opp_idx)
+    opp_active = get_slot(state, opp_ref)
+    if opp_active is not None:
+        state = mutate_slot(
+            state, opp_ref,
+            lambda s: setattr(s, "current_hp", max(0, s.current_hp - actual_damage)),
+        )
+    return state
+
+
+@register_effect("return_colorless_to_hand")
+def return_colorless_to_hand(ctx: EffectContext) -> GameState:
+    """Ilima: put 1 of your Colorless Pokemon that has damage on it into your hand."""
+    from ptcgp.cards.database import get_card as _get_card
+    from ptcgp.cards.types import Element as _Element
+    state = ctx.state
+    pi = ctx.acting_player
+    player = state.players[pi]
+
+    # Find a damaged Colorless Pokemon (active first, then bench)
+    source_ref = None
+    if player.active is not None:
+        try:
+            card = _get_card(player.active.card_id)
+            if card.element is None and player.active.max_hp - player.active.current_hp > 0:
+                source_ref = SlotRef.active(pi)
+        except KeyError:
+            pass
+    if source_ref is None:
+        for i, s in enumerate(player.bench):
+            if s is None:
+                continue
+            try:
+                card = _get_card(s.card_id)
+                if card.element is None and s.max_hp - s.current_hp > 0:
+                    source_ref = SlotRef.bench(pi, i)
+                    break
+            except KeyError:
+                pass
+    if source_ref is None:
+        return state
+
+    slot = get_slot(state, source_ref)
+    state = state.copy()
+    p = state.players[pi]
+    p.hand.append(slot.card_id)
+    if slot.tool_card_id:
+        p.discard.append(slot.tool_card_id)
+    if source_ref.is_active():
+        p.active = None
+    else:
+        p.bench[source_ref.slot] = None
+    return state
+
+
+@register_effect("attach_energy_named_end_turn")
+def attach_energy_named_end_turn(ctx: EffectContext, names: tuple = (), count: int = 2, energy_type: str = "Fire") -> GameState:
+    """Kiawe: attach N energy from zone to a named Pokemon. Turn ends."""
+    from ptcgp.cards.database import get_card as _get_card
+    from ptcgp.cards.types import Element as _Element
+    state = ctx.state
+    pi = ctx.acting_player
+    player = state.players[pi]
+    element = _Element.from_str(energy_type)
+    name_set = {n.lower() for n in names}
+
+    target = None
+    if player.active is not None:
+        try:
+            if _get_card(player.active.card_id).name.lower() in name_set:
+                target = SlotRef.active(pi)
+        except KeyError:
+            pass
+    if target is None:
+        for i, s in enumerate(player.bench):
+            if s is None:
+                continue
+            try:
+                if _get_card(s.card_id).name.lower() in name_set:
+                    target = SlotRef.bench(pi, i)
+                    break
+            except KeyError:
+                pass
+    if target is None:
+        return state
+    return mutate_slot(
+        state, target,
+        lambda s: s.attached_energy.__setitem__(element, s.attached_energy.get(element, 0) + count),
+    )
+
+
+@register_effect("search_deck_named")
+def search_deck_named(ctx: EffectContext, names: tuple = ()) -> GameState:
+    """Put 1 random Pokemon matching one of names from deck into hand."""
+    from ptcgp.cards.database import get_card as _get_card
+    state = ctx.state.copy()
+    p = state.players[ctx.acting_player]
+    name_set = {n.lower() for n in names}
+    matches = [
+        cid for cid in p.deck
+        if _card_name_equals_set(cid, name_set)
+    ]
+    if not matches:
+        return state
+    chosen = state.rng.choice(matches)
+    p.deck.remove(chosen)
+    p.hand.append(chosen)
+    return state
+
+
+def _card_name_equals_set(card_id: str, name_set: set) -> bool:
+    try:
+        return get_card(card_id).name.lower() in name_set
+    except KeyError:
+        return False
+
+
+@register_effect("attach_energy_discard_named")
+def attach_energy_discard_named(ctx: EffectContext, names: tuple = (), count: int = 2, energy_type: str = "Lightning") -> GameState:
+    """Volkner: attach N energy from discard pile to a named Pokemon."""
+    from ptcgp.cards.types import Element as _Element
+    state = ctx.state
+    pi = ctx.acting_player
+    player = state.players[pi]
+    element = _Element.from_str(energy_type)
+    name_set = {n.lower() for n in names}
+
+    target = None
+    if player.active is not None:
+        try:
+            if get_card(player.active.card_id).name.lower() in name_set:
+                target = SlotRef.active(pi)
+        except KeyError:
+            pass
+    if target is None:
+        for i, s in enumerate(player.bench):
+            if s is None:
+                continue
+            try:
+                if get_card(s.card_id).name.lower() in name_set:
+                    target = SlotRef.bench(pi, i)
+                    break
+            except KeyError:
+                pass
+    if target is None:
+        return state
+
+    # We don't track individual energy cards in discard pile — just attach
+    return mutate_slot(
+        state, target,
+        lambda s: s.attached_energy.__setitem__(element, s.attached_energy.get(element, 0) + count),
+    )
+
+
+@register_effect("mars_hand_shuffle")
+def mars_hand_shuffle(ctx: EffectContext) -> GameState:
+    """Mars: opponent shuffles hand into deck, draws remaining-points-needed cards."""
+    state = state_copy = ctx.state.copy()
+    opp_idx = 1 - ctx.acting_player
+    p = state_copy.players[opp_idx]
+    # Points needed to win (typically 3 in PTCGP)
+    remaining_points = max(0, 3 - p.points)
+    p.deck.extend(p.hand)
+    p.hand = []
+    state_copy.rng.shuffle(p.deck)
+    to_draw = min(remaining_points, len(p.deck))
+    drawn = p.deck[:to_draw]
+    p.deck = p.deck[to_draw:]
+    p.hand.extend(drawn)
+    return state_copy
+
+
+@register_effect("iono_hand_shuffle")
+def iono_hand_shuffle(ctx: EffectContext) -> GameState:
+    """Iono: each player shuffles hand into deck, then draws that many cards."""
+    state = ctx.state.copy()
+    for pi in range(2):
+        p = state.players[pi]
+        hand_size = len(p.hand)
+        p.deck.extend(p.hand)
+        p.hand = []
+        state.rng.shuffle(p.deck)
+        to_draw = min(hand_size, len(p.deck))
+        drawn = p.deck[:to_draw]
+        p.deck = p.deck[to_draw:]
+        p.hand.extend(drawn)
+    return state
+
+
+@register_effect("heal_and_cure_status")
+def heal_and_cure_status(ctx: EffectContext, amount: int) -> GameState:
+    """Pokemon Center Lady: heal N from 1 of your Pokemon and cure all status."""
+    state = ctx.state
+    pi = ctx.acting_player
+    # Find most damaged Pokemon
+    player = state.players[pi]
+    best_ref = None
+    best_dmg = 0
+    if player.active is not None:
+        dmg = player.active.max_hp - player.active.current_hp
+        if dmg > best_dmg:
+            best_dmg = dmg
+            best_ref = SlotRef.active(pi)
+    for i, s in enumerate(player.bench):
+        if s is None:
+            continue
+        dmg = s.max_hp - s.current_hp
+        if dmg > best_dmg:
+            best_dmg = dmg
+            best_ref = SlotRef.bench(pi, i)
+    if best_ref is None:
+        return state
+    state = mutate_slot(
+        state, best_ref,
+        lambda s: setattr(s, "current_hp", min(s.max_hp, s.current_hp + amount)),
+    )
+    state = mutate_slot(
+        state, best_ref,
+        lambda s: s.status_effects.clear(),
+    )
+    return state
+
+
+@register_effect("supporter_damage_aura_vs_ex")
+def supporter_damage_aura_vs_ex(ctx: EffectContext, amount: int) -> GameState:
+    """Red: buff this turn's attack damage by amount, only vs ex Pokemon."""
+    state = ctx.state.copy()
+    p = state.players[ctx.acting_player]
+    p.attack_damage_bonus = max(p.attack_damage_bonus, amount)
+    p.attack_damage_bonus_vs_ex = True
+    return state
+
+
+@register_effect("coin_flip_until_tails_discard_energy")
+def coin_flip_until_tails_discard_energy(ctx: EffectContext) -> GameState:
+    """Team Rocket Grunt: flip until tails, discard that many energy from opponent."""
+    from ptcgp.cards.types import Element as _Element
+    state = ctx.state
+    opp_idx = 1 - ctx.acting_player
+    heads = 0
+    while state.rng.random() < 0.5:
+        heads += 1
+    if heads == 0:
+        return state
+    opp_ref = SlotRef.active(opp_idx)
+    for _ in range(heads):
+        opp_active = get_slot(state, opp_ref)
+        if opp_active is None or not opp_active.attached_energy:
+            break
+        flat = []
+        for el, n in opp_active.attached_energy.items():
+            flat.extend([el] * n)
+        if not flat:
+            break
+        chosen = state.rng.choice(flat)
+        state = mutate_slot(state, opp_ref, lambda s: _remove_one_energy_generic(s, chosen))
+    return state
+
+
+def _remove_one_energy_generic(slot, element) -> None:
+    remaining = slot.attached_energy.get(element, 0)
+    if remaining <= 1:
+        slot.attached_energy.pop(element, None)
+    else:
+        slot.attached_energy[element] = remaining - 1
+
+
+@register_effect("heal_water_pokemon")
+def heal_water_pokemon(ctx: EffectContext, amount: int) -> GameState:
+    """Irida: heal N from each of your Pokemon that has any Water Energy attached."""
+    from ptcgp.cards.types import Element as _Element
+    state = ctx.state
+    pi = ctx.acting_player
+    player = state.players[pi]
+    if player.active is not None and player.active.attached_energy.get(_Element.WATER, 0) > 0:
+        state = mutate_slot(
+            state, SlotRef.active(pi),
+            lambda s: setattr(s, "current_hp", min(s.max_hp, s.current_hp + amount)),
+        )
+    for i, s in enumerate(player.bench):
+        if s is not None and s.attached_energy.get(_Element.WATER, 0) > 0:
+            state = mutate_slot(
+                state, SlotRef.bench(pi, i),
+                lambda s: setattr(s, "current_hp", min(s.max_hp, s.current_hp + amount)),
+            )
+    return state
+
+
+@register_effect("reduce_attack_cost_named")
+def reduce_attack_cost_named(ctx: EffectContext, names: tuple = (), amount: int = 2) -> GameState:
+    """Barry: reduce attack cost of named Pokemon by N. No-op for now (complex)."""
+    return ctx.state
+
+
+@register_effect("next_turn_metal_damage_reduction")
+def next_turn_metal_damage_reduction(ctx: EffectContext, amount: int) -> GameState:
+    """Adaman: all your Metal Pokemon take -N damage next turn. No-op placeholder."""
+    return ctx.state
+
+
+@register_effect("next_turn_all_damage_reduction")
+def next_turn_all_damage_reduction(ctx: EffectContext, amount: int) -> GameState:
+    """Blue: all your Pokemon take -N damage from attacks next turn. No-op placeholder."""
+    return ctx.state
+
+
+@register_effect("place_opponent_basic_from_discard")
+def place_opponent_basic_from_discard(ctx: EffectContext) -> GameState:
+    """Pokemon Flute: put 1 Basic Pokemon from opponent's discard onto their Bench."""
+    from ptcgp.cards.database import get_card as _get_card
+    from ptcgp.engine.state import PokemonSlot
+    state = ctx.state
+    opp_idx = 1 - ctx.acting_player
+    opp = state.players[opp_idx]
+
+    # Find basic Pokemon in opponent's discard
+    basic_ids = [
+        cid for cid in opp.discard
+        if _get_card(cid).is_basic_pokemon
+    ]
+    if not basic_ids:
+        return state
+    # Find empty bench slot
+    empty_slot = next((i for i, s in enumerate(opp.bench) if s is None), None)
+    if empty_slot is None:
+        return state
+
+    chosen = state.rng.choice(basic_ids)
+    state = state.copy()
+    opp = state.players[opp_idx]
+    opp.discard.remove(chosen)
+    card = _get_card(chosen)
+    opp.bench[empty_slot] = PokemonSlot(card_id=chosen, current_hp=card.hp, max_hp=card.hp)
+    return state
+
+
+@register_effect("mythical_slab")
+def mythical_slab(ctx: EffectContext) -> GameState:
+    """Mythical Slab: look at top card. If Psychic Pokemon, put in hand. Else bottom."""
+    from ptcgp.cards.database import get_card as _get_card
+    from ptcgp.cards.types import Element as _Element
+    state = ctx.state
+    pi = ctx.acting_player
+    p = state.players[pi]
+    if not p.deck:
+        return state
+    top_id = p.deck[0]
+    try:
+        card = _get_card(top_id)
+    except KeyError:
+        return state
+
+    state = state.copy()
+    p = state.players[pi]
+    if card.is_pokemon and card.element == _Element.PSYCHIC:
+        p.hand.append(p.deck.pop(0))
+    else:
+        p.deck.append(p.deck.pop(0))  # move to bottom
+    return state
+
+
+@register_effect("pokemon_communication")
+def pokemon_communication(ctx: EffectContext) -> GameState:
+    """Pokemon Communication: swap a Pokemon in hand with a random one in deck."""
+    from ptcgp.cards.database import get_card as _get_card
+    state = ctx.state
+    pi = ctx.acting_player
+    p = state.players[pi]
+
+    hand_pokemon = [
+        i for i, cid in enumerate(p.hand)
+        if _get_card(cid).is_pokemon
+    ]
+    deck_pokemon = [
+        i for i, cid in enumerate(p.deck)
+        if _get_card(cid).is_pokemon
+    ]
+    if not hand_pokemon or not deck_pokemon:
+        return state
+
+    state = state.copy()
+    p = state.players[pi]
+    hand_idx = state.rng.choice(hand_pokemon)
+    deck_idx = state.rng.choice(deck_pokemon)
+    p.hand[hand_idx], p.deck[deck_idx] = p.deck[deck_idx], p.hand[hand_idx]
+    state.rng.shuffle(p.deck)
+    return state
+
+
+@register_effect("passive_lum_berry")
+def passive_lum_berry(ctx: EffectContext) -> GameState:
+    # PASSIVE: needs engine hook at end of turn
+    return ctx.state
+
+
+@register_effect("fishing_net")
+def fishing_net(ctx: EffectContext) -> GameState:
+    """Fishing Net: put a random Basic Water Pokemon from discard into hand."""
+    from ptcgp.cards.database import get_card as _get_card
+    from ptcgp.cards.types import Element as _Element
+    state = ctx.state
+    pi = ctx.acting_player
+    p = state.players[pi]
+    matches = [
+        cid for cid in p.discard
+        if _get_card(cid).is_basic_pokemon and _get_card(cid).element == _Element.WATER
+    ]
+    if not matches:
+        return state
+    state = state.copy()
+    p = state.players[pi]
+    chosen = state.rng.choice(matches)
+    p.discard.remove(chosen)
+    p.hand.append(chosen)
+    return state
+
+
+@register_effect("big_malasada")
+def big_malasada(ctx: EffectContext, amount: int = 10) -> GameState:
+    """Big Malasada: heal 10 and remove a random Special Condition from Active."""
+    ref = SlotRef.active(ctx.acting_player)
+    state = mutate_slot(
+        ctx.state, ref,
+        lambda s: setattr(s, "current_hp", min(s.max_hp, s.current_hp + amount)),
+    )
+    slot = get_slot(state, ref)
+    if slot is not None and slot.status_effects:
+        state = state.copy()
+        # Remove a random status
+        active = state.players[ctx.acting_player].active
+        if active is not None and active.status_effects:
+            new_active = active.copy()
+            status_list = list(new_active.status_effects)
+            chosen = state.rng.choice(status_list)
+            new_active.status_effects.discard(chosen)
+            state.players[ctx.acting_player].active = new_active
+    return state
+
+
+@register_effect("passive_retaliate_poison")
+def passive_retaliate_poison(ctx: EffectContext) -> GameState:
+    # PASSIVE: handled by engine hook in attack pipeline
+    return ctx.state
+
+
+@register_effect("passive_beastite_damage")
+def passive_beastite_damage(ctx: EffectContext) -> GameState:
+    # PASSIVE: handled structurally
+    return ctx.state
+
+
+@register_effect("beast_wall_protection")
+def beast_wall_protection(ctx: EffectContext) -> GameState:
+    # PASSIVE/Conditional: no-op placeholder
+    return ctx.state
+
+
+@register_effect("passive_electrical_cord")
+def passive_electrical_cord(ctx: EffectContext) -> GameState:
+    # PASSIVE: triggers on KO, handled structurally
+    return ctx.state
+
+
+@register_effect("reveal_opponent_supporters")
+def reveal_opponent_supporters(ctx: EffectContext) -> GameState:
+    """Looker: information-only, no state change."""
+    return ctx.state
+
+
+@register_effect("lusamine_attach")
+def lusamine_attach(ctx: EffectContext) -> GameState:
+    """Lusamine: attach 2 random Energy from discard to an Ultra Beast.
+
+    Simplified: attach 2 random energy types to active Pokemon (Ultra Beast
+    tagging is complex). The discard pile doesn't track individual energy cards,
+    so this is a best-effort approximation.
+    """
+    from ptcgp.cards.types import Element as _Element
+    state = ctx.state
+    pi = ctx.acting_player
+    player = state.players[pi]
+    if player.active is None:
+        return state
+    # Pick 2 random element types
+    elements = list(_Element)
+    for _ in range(2):
+        chosen = state.rng.choice(elements)
+        state = mutate_slot(
+            state, SlotRef.active(pi),
+            lambda s: s.attached_energy.__setitem__(chosen, s.attached_energy.get(chosen, 0) + 1),
+        )
+    return state
+
+
+@register_effect("search_deck_random_basic")
+def search_deck_random_basic(ctx: EffectContext) -> GameState:
+    """Poke Ball: put 1 random Basic Pokemon from deck into hand."""
+    from ptcgp.cards.database import get_card as _get_card
+    state = ctx.state.copy()
+    p = state.players[ctx.acting_player]
+    basics = [cid for cid in p.deck if _get_card(cid).is_basic_pokemon]
+    if not basics:
+        return state
+    chosen = state.rng.choice(basics)
+    p.deck.remove(chosen)
+    p.hand.append(chosen)
+    return state
+
+
+@register_effect("search_discard_random_basic")
+def search_discard_random_basic(ctx: EffectContext) -> GameState:
+    """Celestic Town Elder: put 1 random Basic Pokemon from discard into hand."""
+    from ptcgp.cards.database import get_card as _get_card
+    state = ctx.state.copy()
+    p = state.players[ctx.acting_player]
+    basics = [cid for cid in p.discard if _get_card(cid).is_basic_pokemon]
+    if not basics:
+        return state
+    chosen = state.rng.choice(basics)
+    p.discard.remove(chosen)
+    p.hand.append(chosen)
+    return state
+
+
+@register_effect("switch_opponent_damaged_to_active")
+def switch_opponent_damaged_to_active(ctx: EffectContext) -> GameState:
+    """Cyrus: switch in 1 of opponent's benched Pokemon that has damage on it."""
+    state = ctx.state
+    opp_idx = 1 - ctx.acting_player
+    opp = state.players[opp_idx]
+    damaged_bench = [
+        i for i, s in enumerate(opp.bench)
+        if s is not None and s.max_hp - s.current_hp > 0
+    ]
+    if not damaged_bench:
+        return state
+    chosen = state.rng.choice(damaged_bench)
+    state = state.copy()
+    p = state.players[opp_idx]
+    old_active = p.active
+    p.active = p.bench[chosen]
+    p.bench[chosen] = old_active
+    return state

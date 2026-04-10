@@ -426,8 +426,182 @@ PATTERNS: list[tuple[str, str, Callable[[re.Match], dict[str, Any]]]] = [
     (r"look at your opponent'?s hand", "look_opponent_hand",
      lambda m: {}),
 
+    # ---- supporter: two-named damage aura --------------------------------
+    (rf"during this turn, attacks used by your (\w+) or (\w+) do \+(\d+) damage",
+     "supporter_damage_aura",
+     lambda m: {"amount": _int(m, 3), "names": (m.group(1), m.group(2))}),
+
+    # ---- supporter: damage aura vs ex only --------------------------------
+    (rf"during this turn, attacks used by your {_POK} do \+(\d+) damage to your opponent'?s active {_POK} ex",
+     "supporter_damage_aura_vs_ex",
+     lambda m: {"amount": _int(m)}),
+
+    # ---- Iono: both players shuffle and redraw ----------------------------
+    (r"each player shuffles the cards in their hand into their deck, then draws that many cards",
+     "iono_hand_shuffle", lambda m: {}),
+
+    # ---- Mars: opponent shuffle hand, draw remaining points ---------------
+    (r"your opponent shuffles their hand into their deck and draws a card for each of their remaining points",
+     "mars_hand_shuffle", lambda m: {}),
+
+    # ---- heal and cure status (Pokemon Center Lady) -----------------------
+    (rf"heal (\d+) damage from 1 of your {_POK}, and it recovers from all special conditions",
+     "heal_and_cure_status", lambda m: {"amount": _int(m)}),
+
+    # ---- Coin flip until tails discard energy (Team Rocket Grunt) ---------
+    (rf"flip a coin until you get tails\. for each heads, discard a random energy from your opponent'?s active",
+     "coin_flip_until_tails_discard_energy", lambda m: {}),
+
+    # ---- Heal water pokemon (Irida) ---------------------------------------
+    (rf"heal (\d+) damage from each of your {_POK} that has any water energy",
+     "heal_water_pokemon", lambda m: {"amount": _int(m)}),
+
+    # ---- reduce attack cost named (Barry) ---------------------------------
+    (rf"during this turn, attacks used by your (\w+), (\w+),? and (\w+) cost (\d+) less energy",
+     "reduce_attack_cost_named",
+     lambda m: {"names": (m.group(1), m.group(2), m.group(3)), "amount": _int(m, 4)}),
+
+    # ---- next-turn metal damage reduction (Adaman) ------------------------
+    (rf"during your opponent'?s next turn, all of your metal {_POK} take {_DASH}(\d+) damage",
+     "next_turn_metal_damage_reduction", lambda m: {"amount": _int(m)}),
+
+    # ---- next-turn all damage reduction (Blue) ----------------------------
+    (rf"during your opponent'?s next turn, all of your {_POK} take {_DASH}(\d+) damage from attacks",
+     "next_turn_all_damage_reduction", lambda m: {"amount": _int(m)}),
+
+    # ---- retreat cost reduction (Leaf) ------------------------------------
+    (rf"retreat cost of your active {_POK} is (\d+) less", "reduce_retreat_cost",
+     lambda m: {"amount": _int(m)}),
+
+    # ---- return Mew ex to hand (Budding Expeditioner) ---------------------
+    (rf"put your (\w+ ex) in the active spot into your hand",
+     "return_active_to_hand_named",
+     lambda m: {"names": (m.group(1),)}),
+
+    # ---- place opponent basic from discard (Pokemon Flute) ----------------
+    (rf"put 1 basic {_POK} from your opponent'?s discard pile onto your opponent'?s bench",
+     "place_opponent_basic_from_discard", lambda m: {}),
+
+    # ---- mythical slab: look top, psychic to hand -------------------------
+    (rf"if that card is a psychic {_POK}, put it into your hand",
+     "mythical_slab", lambda m: {}),
+
+    # ---- pokemon communication: swap hand/deck ----------------------------
+    (rf"choose a {_POK} in your hand and switch it with a random {_POK} in your deck",
+     "pokemon_communication", lambda m: {}),
+
+    # ---- Lum Berry (passive tool) -----------------------------------------
+    (r"at the end of each turn.*affected by any special conditions.*recovers from all of them",
+     "passive_lum_berry", lambda m: {}),
+
+    # ---- fishing net: random basic water from discard ---------------------
+    (rf"put a random basic water {_POK} from your discard pile into your hand",
+     "fishing_net", lambda m: {}),
+
+    # ---- Big Malasada: heal 10 + remove random status ---------------------
+    (rf"heal (\d+) damage and remove a random special condition from your active",
+     "big_malasada", lambda m: {"amount": _int(m)}),
+
+    # ---- Poison Barb (passive tool) ---------------------------------------
+    (r"the attacking {_POK} is now poisoned".replace("{_POK}", _POK),
+     "passive_retaliate_poison", lambda m: {}),
+
+    # ---- Leaf Cape: Grass +30 HP ------------------------------------------
+    (rf"the grass {_POK} this card is attached to gets \+(\d+) hp",
+     "hp_bonus", lambda m: {"amount": _int(m)}),
+
+    # ---- Beastite (passive tool) ------------------------------------------
+    (r"do \+(\d+) damage.*for each point you have gotten",
+     "passive_beastite_damage", lambda m: {}),
+
+    # ---- Beast Wall -------------------------------------------------------
+    (r"all of your ultra beasts take {_DASH}(\d+) damage".replace("{_DASH}", _DASH),
+     "beast_wall_protection", lambda m: {}),
+
+    # ---- Electrical Cord (passive tool) -----------------------------------
+    (r"move 2 lightning energy from that {_POK}.*attach 1 energy each to 2".replace("{_POK}", _POK),
+     "passive_electrical_cord", lambda m: {}),
+
+    # ---- Gladion: search deck for Type: Null or Silvally ------------------
+    (r"put 1 random type: null or silvally from your deck into your hand",
+     "search_deck_named", lambda m: {"names": ("Type: Null", "Silvally")}),
+
+    # ---- Looker: reveal opponent supporters (info-only) -------------------
+    (r"your opponent reveals all of the supporter cards in their deck",
+     "reveal_opponent_supporters", lambda m: {}),
+
+    # ---- Lusamine: conditional + attach from discard ----------------------
+    (r"choose 1 of your ultra beasts\. attach 2 random energy from your discard pile",
+     "lusamine_attach", lambda m: {}),
+
+    # ---- Repel: switch opponent's active Basic ----------------------------
+    (rf"switch out your opponent'?s active basic {_POK} to the bench",
+     "switch_opponent_basic_to_active", lambda m: {}),
+
+    # ---- Discard all opponent tools (Guzma) -------------------------------
+    (rf"discard all {_POK} tool cards attached to each of your opponent'?s {_POK}",
+     "discard_all_opponent_tools", lambda m: {}),
+
+    # ---- Heal stage 2 target (Lillie) ------------------------------------
+    (rf"heal (\d+) damage from 1 of your stage 2 {_POK}",
+     "heal_stage2_target", lambda m: {"amount": _int(m)}),
+
+    # ---- Heal all named, discard energy (Mallow) --------------------------
+    (rf"heal all damage from 1 of your (\w+) or (\w+)\. if you do, discard all energy",
+     "heal_all_named_discard_energy",
+     lambda m: {"names": (m.group(1), m.group(2))}),
+
+    # ---- Move damage to opponent (Acerola) --------------------------------
+    (rf"choose 1 of your (\w+) or (\w+) that has damage on it, and move (\d+) of its damage to your opponent",
+     "move_damage_to_opponent",
+     lambda m: {"names": (m.group(1), m.group(2)), "amount": _int(m, 3)}),
+
+    # ---- Return colorless to hand (Ilima) ---------------------------------
+    (rf"put 1 of your colorless {_POK} that has damage on it into your hand",
+     "return_colorless_to_hand", lambda m: {}),
+
+    # ---- Lana: conditional switch opponent --------------------------------
+    (rf"you can use this card only if you have (\w+) in play\. switch in 1 of your opponent'?s benched {_POK} to the active",
+     "switch_opponent_active", lambda m: {}),
+
+    # ---- Kiawe: attach fire energy, end turn ------------------------------
+    (rf"choose 1 of your ([\w ]+) or ([\w ]+)\. take (\d+) fire energy from your energy zone and attach it to that {_POK}\. your turn ends",
+     "attach_energy_named_end_turn",
+     lambda m: {"names": (m.group(1).strip(), m.group(2).strip()), "count": _int(m, 3), "energy_type": "Fire"}),
+
+    # ---- Sophocles: multi-word named damage aura ---------------------------
+    (rf"during this turn, attacks used by your ([\w ]+), ([\w ]+),? or ([\w ]+) do \+(\d+) damage",
+     "supporter_damage_aura",
+     lambda m: {"amount": _int(m, 4), "names": (m.group(1).strip(), m.group(2).strip(), m.group(3).strip())}),
+
+    # ---- search deck named (multi): Team Galactic Grunt, Poke Ball --------
+    (rf"put 1 random (\w+), (\w+), or (\w+) from your deck into your hand",
+     "search_deck_named",
+     lambda m: {"names": (m.group(1), m.group(2), m.group(3))}),
+
+    # ---- Poke Ball: search deck for random basic pokemon ------------------
+    (rf"put 1 random basic {_POK} from your deck into your hand",
+     "search_deck_random_basic", lambda m: {}),
+
+    # ---- Celestic Town Elder: random basic from discard -------------------
+    (rf"put 1 random basic {_POK} from your discard pile into your hand",
+     "search_discard_random_basic", lambda m: {}),
+
+    # ---- Volkner: attach energy from discard to named ---------------------
+    (rf"choose 1 of your (\w+) or (\w+)\. attach (\d+) (\w+) energy from your discard pile to that {_POK}",
+     "attach_energy_discard_named",
+     lambda m: {"names": (m.group(1), m.group(2)), "count": _int(m, 3), "energy_type": m.group(4).capitalize()}),
+
+    # ---- Cyrus: switch opponent damaged to active --------------------------
+    (rf"switch in 1 of your opponent'?s benched {_POK} that has damage on it to the active",
+     "switch_opponent_damaged_to_active", lambda m: {}),
+
+    # ---- Dawn: move energy bench to active (already have pattern) ----------
+
     # ---- tool: HP bonus -----------------------------------------------
     (rf"{_POK} this card is attached to has \+(\d+) hp", "hp_bonus",
+     lambda m: {"amount": _int(m)}),
+    (rf"{_POK} this card is attached to gets \+(\d+) hp", "hp_bonus",
      lambda m: {"amount": _int(m)}),
     (rf"evolve a basic {_POK} directly to a stage 2", "rare_candy_evolve", lambda m: {}),
     (rf"put that card onto the basic {_POK} to evolve it, skipping the stage 1",

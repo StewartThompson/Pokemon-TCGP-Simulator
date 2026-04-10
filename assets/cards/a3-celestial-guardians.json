@@ -3644,7 +3644,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Big Malasada",
+        "effect": "Heal 10 damage and remove a random Special Condition from your Active Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3660,7 +3665,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Fishing Net",
+        "effect": "Put a random Basic Water Pokémon from your discard pile into your hand."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3698,7 +3708,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Rotom Dex",
+        "effect": "Look at the top card of your deck. Then, you may shuffle your deck."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3714,7 +3729,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Poison Barb",
+        "effect": "If the Pokémon this card is attached to is your Active Pokémon and is damaged by an attack from your opponent's Pokémon, the Attacking Pokémon is now Poisoned."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3730,7 +3750,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Leaf Cape",
+        "effect": "The Grass Pokémon this card is attached to gets +30 HP."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3746,7 +3771,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Acerola",
+        "effect": "Choose 1 of your Palossand or Mimikyu that has damage on it, and move 40 of its damage to your opponent's Active Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3762,7 +3792,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Ilima",
+        "effect": "Put 1 of your Colorless Pokémon that has damage on it into your hand."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3778,7 +3813,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Kiawe",
+        "effect": "Choose 1 of your Alolan Marowak or Turtonator. Take 2 Fire Energy from your Energy Zone and attach it to that Pokémon. Your turn ends."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3794,7 +3834,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Guzma",
+        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3810,7 +3855,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Lana",
+        "effect": "You can use this card only if you have Araquanid in play. Switch in 1 of your opponent's Benched Pokémon to the Active Spot."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3826,7 +3876,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Sophocles",
+        "effect": "During this turn, attacks used by your Alolan Golem, Vikavolt, or Togedemaru do +30 damage to your opponent's Active Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3842,7 +3897,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Mallow",
+        "effect": "Heal all damage from 1 of your Shiinotic or Tsareena. If you do, discard all Energy from that Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3858,7 +3918,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Lillie",
+        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -4805,7 +4870,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Acerola",
+        "effect": "Choose 1 of your Palossand or Mimikyu that has damage on it, and move 40 of its damage to your opponent's Active Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4821,7 +4891,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Ilima",
+        "effect": "Put 1 of your Colorless Pokémon that has damage on it into your hand."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4837,7 +4912,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Kiawe",
+        "effect": "Choose 1 of your Alolan Marowak or Turtonator. Take 2 Fire Energy from your Energy Zone and attach it to that Pokémon. Your turn ends."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4853,7 +4933,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Guzma",
+        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4869,7 +4954,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Lana",
+        "effect": "You can use this card only if you have Araquanid in play. Switch in 1 of your opponent's Benched Pokémon to the Active Spot."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4885,7 +4975,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Sophocles",
+        "effect": "During this turn, attacks used by your Alolan Golem, Vikavolt, or Togedemaru do +30 damage to your opponent's Active Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4901,7 +4996,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Mallow",
+        "effect": "Heal all damage from 1 of your Shiinotic or Tsareena. If you do, discard all Energy from that Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4917,7 +5017,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Lillie",
+        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -5227,7 +5332,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Guzma",
+        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Immersive"
   },
@@ -5243,7 +5353,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Lillie",
+        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Immersive"
   },

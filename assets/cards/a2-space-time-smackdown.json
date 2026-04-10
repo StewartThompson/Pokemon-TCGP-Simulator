@@ -3726,7 +3726,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Skull Fossil",
+        "effect": "Play this card as if it were a 40-HP Basic Colorless Pokémon. At any time during your turn, you may discard this card from play. This card can't retreat."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Common"
   },
@@ -3742,7 +3747,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Armor Fossil",
+        "effect": "Play this card as if it were a 40-HP Basic Colorless Pokémon. At any time during your turn, you may discard this card from play. This card can't retreat."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Common"
   },
@@ -3758,7 +3768,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Pokémon Communication",
+        "effect": "Choose a Pokémon in your hand and switch it with a random Pokémon in your deck."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3774,7 +3789,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Giant Cape",
+        "effect": "The Pokémon this card is attached to gets +20 HP."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3812,7 +3832,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Lum Berry",
+        "effect": "At the end of each turn, if the Pokémon this card is attached to is affected by any Special Conditions, it recovers from all of them, and discard this card."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3828,7 +3853,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Cyrus",
+        "effect": "Switch in 1 of your opponent's Benched Pokémon that has damage on it to the Active Spot."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3844,7 +3874,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Team Galactic Grunt",
+        "effect": "Put 1 random Glameow, Stunky, or Croagunk from your deck into your hand."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3860,7 +3895,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Cynthia",
+        "effect": "During this turn, attacks used by your Garchomp or Togekiss do +50 damage to your opponent's Active Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3876,7 +3916,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Volkner",
+        "effect": "Choose 1 of your Electivire or Luxray. Attach 2 Lightning Energy from your discard pile to that Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -3914,7 +3959,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Mars",
+        "effect": "Your opponent shuffles their hand into their deck and draws a card for each of their remaining points needed to win."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Uncommon"
   },
@@ -4867,7 +4917,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Cyrus",
+        "effect": "Switch in 1 of your opponent's Benched Pokémon that has damage on it to the Active Spot."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4883,7 +4938,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Team Galactic Grunt",
+        "effect": "Put 1 random Glameow, Stunky, or Croagunk from your deck into your hand."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4899,7 +4959,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Cynthia",
+        "effect": "During this turn, attacks used by your Garchomp or Togekiss do +50 damage to your opponent's Active Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4915,7 +4980,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Volkner",
+        "effect": "Choose 1 of your Electivire or Luxray. Attach 2 Lightning Energy from your discard pile to that Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4931,7 +5001,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Dawn",
+        "effect": "Move an Energy from 1 of your Benched Pokémon to your Active Pokémon."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },
@@ -4947,7 +5022,12 @@
     "attacks": [],
     "retreatCost": null,
     "weakness": null,
-    "abilities": [],
+    "abilities": [
+      {
+        "name": "Mars",
+        "effect": "Your opponent shuffles their hand into their deck and draws a card for each of their remaining points needed to win."
+      }
+    ],
     "evolvesFrom": null,
     "rarity": "Full Art EX/Support"
   },

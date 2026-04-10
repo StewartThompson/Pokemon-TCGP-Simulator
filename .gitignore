@@ -1,3 +1,23 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.DS_Store
+dist/
+build/
+*.egg
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+/.idea
+.vscode/launch.json
+legacy/
+models/
+=======
 # ── IDE / Editor ─────────────────────────────────────────────────────────────
 .idea/
 .vscode/

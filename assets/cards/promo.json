@@ -1,0 +1,178 @@
+[
+  {
+    "id": "pa-001",
+    "name": "Potion",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Promo-A",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Heal",
+        "effect": "Heal 20 damage from 1 of your Pokémon.",
+        "handler": "heal_target(amount=20)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": null
+  },
+  {
+    "id": "pa-002",
+    "name": "X Speed",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Promo-A",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "X Speed",
+        "effect": "During this turn, the Retreat Cost of your Active Pokémon is -1.",
+        "handler": "reduce_retreat_cost(1)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": null
+  },
+  {
+    "id": "pa-003",
+    "name": "Hand Scope",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Promo-A",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Hand Scope",
+        "effect": "Look at your opponent's hand.",
+        "handler": "look_opponent_hand()"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": null
+  },
+  {
+    "id": "pa-004",
+    "name": "Pokédex",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Promo-A",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Pokédex",
+        "effect": "Look at the top 3 cards of your deck.",
+        "handler": "look_top_of_deck(count=3)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": null
+  },
+  {
+    "id": "pa-005",
+    "name": "Poké Ball",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Promo-A",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Draw basic Pokémon",
+        "effect": "Draw 1 basic Pokémon card.",
+        "handler": "draw_basic_pokemon()"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": null
+  },
+  {
+    "id": "pa-006",
+    "name": "Red Card",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Promo-A",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Red Card",
+        "effect": "Your opponent shuffles their hand into their deck and draws 3 cards.",
+        "handler": "opponent_shuffle_hand_draw(count=3)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": null
+  },
+  {
+    "id": "pa-007",
+    "name": "Professor's Research",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Supporter",
+    "health": null,
+    "set": "Promo-A",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Draw 2 cards",
+        "effect": "Draw 2 cards.",
+        "handler": "draw_cards(count=2)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": null
+  },
+  {
+    "id": "pa-008",
+    "name": "Pokédex",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Promo-A",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Pokédex",
+        "effect": "Look at the top 3 cards of your deck.",
+        "handler": "look_top_of_deck(count=3)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": null
+  }
+]

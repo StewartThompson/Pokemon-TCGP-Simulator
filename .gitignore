@@ -23,14 +23,14 @@ htmlcov/
 *.prof
 
 # ── Rust ──────────────────────────────────────────────────────────────────────
-ptcgp_rust/target/
+ptcgp/target/
 Cargo.lock
 
 # ── Compiled Python extension (maturin output) ────────────────────────────────
-ptcgp_rust/*.so
-ptcgp_rust/*.pyd
-ptcgp_rust/*.dylib
-ptcgp_rust/*.dll
+ptcgp/*.so
+ptcgp/*.pyd
+ptcgp/*.dylib
+ptcgp/*.dll
 
 # ── Virtual environments ──────────────────────────────────────────────────────
 .venv/

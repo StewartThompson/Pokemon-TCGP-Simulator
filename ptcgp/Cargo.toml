@@ -1,0 +1,43 @@
+[package]
+name = "ptcgp"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+python = ["pyo3"]
+
+[lib]
+name = "ptcgp"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
+rand = { version = "0.8", features = ["small_rng"] }
+rayon = "1.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "throughput"
+harness = false
+
+[[bin]]
+name = "benchmark"
+path = "src/bin/benchmark.rs"
+required-features = []
+
+[[bin]]
+name = "ptcgp"
+path = "src/bin/ptcgp.rs"

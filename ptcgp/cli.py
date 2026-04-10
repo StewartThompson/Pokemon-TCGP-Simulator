@@ -1,203 +1,250 @@
-"""CLI entry point for PTCGP Battle Simulator."""
-
-from __future__ import annotations
-
+"""Command-line interface for the Pokemon TCG Pocket Battle Simulator."""
 import click
-from rich.console import Console
-
-console = Console()
-
-
-def _ensure_cards_loaded():
-    """Load card database if not already loaded."""
-    from ptcgp.engine.cards import get_all_cards, load_all_cards, load_cards_from_json
-    import os
-    if not get_all_cards():
-        # Try new data dir first, then v3 assets
-        data_dir = os.path.join(os.path.dirname(__file__), "data", "cards")
-        v3_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "v3", "assets")
-
-        loaded = load_all_cards()
-        if loaded == 0 and os.path.exists(v3_dir):
-            for fname in os.listdir(v3_dir):
-                if fname.endswith(".json"):
-                    loaded += load_cards_from_json(os.path.join(v3_dir, fname))
-
-        console.print(f"[dim]Loaded {loaded} cards[/dim]")
 
 
 @click.group()
-def main():
+def cli():
     """Pokemon TCG Pocket Battle Simulator."""
     pass
 
 
-@main.command()
-@click.option("--deck1", default="grass", help="Deck for player 1 (grass, fire)")
-@click.option("--deck2", default="fire", help="Deck for player 2")
-@click.option("--human/--no-human", default=True, help="Play as human (player 1)")
-@click.option("--opponent", default="heuristic", help="Opponent type: random, heuristic")
-@click.option("--seed", default=None, type=int, help="Random seed")
-@click.option("--debug/--no-debug", default=False)
-def play(deck1: str, deck2: str, human: bool, opponent: str, seed: int | None, debug: bool):
-    """Play a game of Pokemon TCG Pocket."""
-    _ensure_cards_loaded()
-
-    from ptcgp.data.decks.sample_decks import get_deck
-    from ptcgp.engine.runner import run_game
+@cli.command()
+@click.option("--deck", default="grass", help="Your deck: grass or fire")
+@click.option("--opponent", default="fire", help="Opponent deck: grass or fire")
+@click.option("--seed", default=None, type=int,
+              help="Random seed (default: random; printed so you can reproduce)")
+def play(deck, opponent, seed):
+    """Play an interactive game against the heuristic AI."""
+    import ptcgp.effects  # register all effect handlers
+    from ptcgp.cards.database import load_defaults
+    from ptcgp.decks.sample_decks import get_sample_deck
     from ptcgp.agents.human import HumanAgent
-    from ptcgp.agents.random_agent import RandomAgent
     from ptcgp.agents.heuristic import HeuristicAgent
+    from ptcgp.runner.game_runner import run_game
+    from ptcgp.ui.theme import console
 
-    d1 = get_deck(deck1)
-    d2 = get_deck(deck2)
+    load_defaults()
 
-    if human:
-        agent1 = HumanAgent()
-    else:
-        agent1 = HeuristicAgent()
+    try:
+        deck1_ids, energy1 = get_sample_deck(deck)
+        deck2_ids, energy2 = get_sample_deck(opponent)
+    except KeyError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise click.Abort()
 
-    if opponent == "random":
-        agent2 = RandomAgent()
-    else:
-        agent2 = HeuristicAgent()
+    human_agent = HumanAgent(player_index=0)
+    ai_agent = HeuristicAgent()
 
-    console.print(f"\n[bold]Game: {d1['name']} vs {d2['name']}[/bold]")
-    console.print(f"Player 1: {'Human' if human else 'Heuristic'}")
-    console.print(f"Player 2: {opponent.capitalize()}")
-    console.print()
+    import random as _random
+    if seed is None:
+        seed = _random.SystemRandom().randrange(2**31)
 
-    state, winner = run_game(
-        d1["cards"], d2["cards"],
-        d1["energy_types"], d2["energy_types"],
-        agent1, agent2,
-        seed=seed, debug=debug,
+    console.print(f"[bold]Starting game: {deck.title()} deck vs {opponent.title()} deck (AI)[/bold]")
+    console.print(f"[dim]seed={seed} (re-run with --seed {seed} to replay this exact game)[/dim]")
+    console.print("[dim]Press Ctrl+C at any time to quit.[/dim]\n")
+
+    try:
+        final_state, winner = run_game(
+            human_agent, ai_agent,
+            deck1_ids, deck2_ids,
+            energy1, energy2,
+            seed=seed,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Game aborted.[/yellow]")
+        return
+    except Exception:
+        console.print("\n[bold red]==== GAME CRASHED ====[/bold red]")
+        console.print_exception(show_locals=False)
+        console.print(
+            "[dim]Re-run with --seed to reproduce, and report the traceback above.[/dim]"
+        )
+        raise click.Abort()
+
+    # Final board
+    from ptcgp.ui.renderer import render_state
+    render_state(final_state, 0)
+
+    console.rule("[bold]GAME OVER[/bold]")
+    p1_pts = final_state.players[0].points
+    p2_pts = final_state.players[1].points
+    console.print(
+        f"Final score: [bold]YOU {p1_pts}[/bold]  |  [bold]OPPONENT {p2_pts}[/bold]",
+        justify="center",
     )
+    if winner == 0:
+        console.print("[bold green]*** YOU WIN! ***[/bold green]", justify="center")
+    elif winner == 1:
+        console.print("[bold red]*** YOU LOSE ***[/bold red]", justify="center")
+    elif winner == -1:
+        console.print("[bold yellow]*** DRAW ***[/bold yellow]", justify="center")
+    else:
+        console.print("[yellow]Game ended (unknown result)[/yellow]", justify="center")
 
-    if not human:
-        if winner is None:
-            console.print("[yellow]Draw![/yellow]")
-        else:
-            console.print(f"[bold]Player {winner + 1} wins![/bold] "
-                         f"(Points: {state.players[0].points}-{state.players[1].points}, "
-                         f"Turn {state.turn_number})")
 
-
-@main.command()
+@cli.command()
+@click.option("--games", default=50, type=int, help="Number of games to profile (default: 50)")
 @click.option("--deck1", default="grass", help="Deck for player 1")
 @click.option("--deck2", default="fire", help="Deck for player 2")
-@click.option("--n-games", default=100, type=int, help="Number of games to simulate")
-@click.option("--agent1", default="heuristic", help="Agent type for player 1")
-@click.option("--agent2", default="heuristic", help="Agent type for player 2")
-@click.option("--parallel/--no-parallel", default=False, help="Use multiprocessing")
+@click.option("--agent1", default="heuristic", type=click.Choice(["random", "heuristic"]))
+@click.option("--agent2", default="heuristic", type=click.Choice(["random", "heuristic"]))
 @click.option("--seed", default=42, type=int, help="Base random seed")
-def simulate(deck1: str, deck2: str, n_games: int, agent1: str, agent2: str,
-             parallel: bool, seed: int):
-    """Simulate many games between two decks."""
-    _ensure_cards_loaded()
+@click.option("--top", default=30, type=int, help="Number of top functions to show (default: 30)")
+@click.option("--sort", default="cumulative",
+              type=click.Choice(["cumulative", "tottime", "calls"]),
+              help="Sort column (default: cumulative)")
+@click.option("--output", default=None, type=str,
+              help="Save raw .prof file to this path (open with snakeviz or py-spy)")
+def profile(games, deck1, deck2, agent1, agent2, seed, top, sort, output):
+    """Profile N single-process games and show the top hottest functions.
 
-    from ptcgp.data.decks.sample_decks import get_deck
-    from ptcgp.simulation.simulator import simulate as run_simulation
+    Runs in a single worker (no multiprocessing) so cProfile sees the full
+    call stack. Use this before and after optimizations to measure impact.
 
-    d1 = get_deck(deck1)
-    d2 = get_deck(deck2)
+    Examples:
+        ptcgp profile --games 50
+        ptcgp profile --games 100 --sort tottime --top 20
+        ptcgp profile --games 50 --output profile.prof  # then: snakeviz profile.prof
+    """
+    import cProfile
+    import io
+    import pstats
+    import time
+    import ptcgp.effects  # noqa: F401 — registers all effect handlers
+    from ptcgp.cards.database import load_defaults
+    from ptcgp.ui.theme import console
 
-    console.print(f"\n[bold]Simulating {n_games} games: {d1['name']} vs {d2['name']}[/bold]")
-    console.print(f"Agents: {agent1} vs {agent2}")
-    console.print()
+    load_defaults()
 
-    results = run_simulation(
-        d1["cards"], d2["cards"],
-        d1["energy_types"], d2["energy_types"],
-        agent1=agent1, agent2=agent2,
-        n_games=n_games,
-        parallel=parallel,
+    from ptcgp.agents.heuristic import HeuristicAgent
+    from ptcgp.agents.random_agent import RandomAgent
+    from ptcgp.decks.sample_decks import get_sample_deck
+    from ptcgp.runner.game_runner import run_game
+
+    deck1_ids, energy1 = get_sample_deck(deck1)
+    deck2_ids, energy2 = get_sample_deck(deck2)
+
+    def _make_agent(agent_type: str):
+        return HeuristicAgent() if agent_type == "heuristic" else RandomAgent()
+
+    console.print(
+        f"[bold]Profiling {games} games[/bold] "
+        f"({deck1}/{agent1} vs {deck2}/{agent2}) "
+        f"[dim]seed={seed}, in-process (no multiprocessing)[/dim]"
+    )
+
+    # Run games directly in-process so cProfile captures the full call stack.
+    wins = [0, 0]
+    pr = cProfile.Profile()
+    t0 = time.perf_counter()
+    pr.enable()
+
+    for i in range(games):
+        a1 = _make_agent(agent1)
+        a2 = _make_agent(agent2)
+        _, winner = run_game(
+            a1, a2,
+            list(deck1_ids), list(deck2_ids),
+            list(energy1), list(energy2),
+            seed=seed + i,
+        )
+        if winner == 0:
+            wins[0] += 1
+        elif winner == 1:
+            wins[1] += 1
+
+    pr.disable()
+    elapsed = time.perf_counter() - t0
+
+    games_per_sec = games / elapsed if elapsed > 0 else 0
+    ms_per_game = elapsed * 1000 / games if games > 0 else 0
+
+    completed = wins[0] + wins[1]
+    p1_rate = wins[0] / completed if completed else 0.0
+    p2_rate = wins[1] / completed if completed else 0.0
+    console.print(
+        f"\n[bold]Results:[/bold] "
+        f"P1 {wins[0]} wins ({p1_rate * 100:.1f}%)  |  "
+        f"P2 {wins[1]} wins ({p2_rate * 100:.1f}%)"
+    )
+    console.print(
+        f"[bold]Timing:[/bold] {elapsed:.2f}s total  |  "
+        f"[bold]{games_per_sec:.1f} games/sec[/bold]  |  "
+        f"{ms_per_game:.1f} ms/game"
+    )
+
+    if output:
+        pr.dump_stats(output)
+        console.print(f"[dim]Raw profile saved to {output!r} — open with: snakeviz {output}[/dim]")
+
+    # Print top-N functions using pstats
+    buf = io.StringIO()
+    ps = pstats.Stats(pr, stream=buf)
+    ps.strip_dirs()
+    ps.sort_stats(sort)
+    ps.print_stats(top)
+
+    raw = buf.getvalue()
+
+    # Pretty-print via Rich — highlight the table lines
+    console.print(f"\n[bold]Top {top} functions by [cyan]{sort}[/cyan] time:[/bold]")
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        # Header line (ncalls / tottime / ...)
+        if "ncalls" in line:
+            console.print(f"[bold dim]{line}[/bold dim]")
+        # Function lines — highlight our own code in yellow
+        elif "ptcgp" in line:
+            console.print(f"[yellow]{line}[/yellow]")
+        elif line.startswith("   "):
+            console.print(f"[dim]{line}[/dim]")
+        else:
+            console.print(line)
+
+
+@cli.command()
+@click.option("--games", default=100, type=int, help="Number of games to simulate")
+@click.option("--deck1", default="grass", help="Deck for player 1")
+@click.option("--deck2", default="fire", help="Deck for player 2")
+@click.option("--agent1", default="heuristic", type=click.Choice(["random", "heuristic"]), help="Agent for player 1")
+@click.option("--agent2", default="heuristic", type=click.Choice(["random", "heuristic"]), help="Agent for player 2")
+@click.option("--seed", default=None, type=int,
+              help="Base random seed (default: random; printed so you can reproduce)")
+@click.option("--workers", default=None, type=int, help="Number of parallel workers (default: CPU count)")
+def simulate(games, deck1, deck2, agent1, agent2, seed, workers):
+    """Simulate N bot-vs-bot games in parallel and print win rates."""
+    import random as _random
+    import ptcgp.effects  # noqa: F401 — registers all effect handlers
+    from ptcgp.cards.database import load_defaults
+    from ptcgp.runner.batch_runner import run_batch_simple
+    from ptcgp.ui.theme import console
+
+    load_defaults()
+
+    n_workers = workers  # None means use cpu_count in run_batch
+
+    if seed is None:
+        seed = _random.SystemRandom().randrange(2**31)
+
+    console.print(f"[bold]Simulating {games} games[/bold] "
+                  f"({deck1}/{agent1} vs {deck2}/{agent2}) "
+                  f"[dim]seed={seed}, workers={n_workers or 'auto'}[/dim]")
+
+    result = run_batch_simple(
+        deck1_name=deck1,
+        deck2_name=deck2,
+        agent1_type=agent1,
+        agent2_type=agent2,
+        n_games=games,
         base_seed=seed,
+        n_workers=n_workers,
     )
 
-    console.print(results.summary())
-
-
-@main.command()
-@click.option("--deck", default="grass", help="Deck to train with")
-@click.option("--opponent-deck", default="fire", help="Opponent deck")
-@click.option("--steps", default=50000, type=int, help="Training timesteps")
-@click.option("--opponent", default="heuristic", help="Opponent type")
-@click.option("--save-path", default="models/ppo_ptcgp", help="Model save path")
-def train(deck: str, opponent_deck: str, steps: int, opponent: str, save_path: str):
-    """Train an RL agent to play PTCGP."""
-    _ensure_cards_loaded()
-
-    from ptcgp.data.decks.sample_decks import get_deck
-    from ptcgp.training.train import train_agent
-
-    d1 = get_deck(deck)
-    d2 = get_deck(opponent_deck)
-
-    console.print(f"\n[bold]Training RL agent ({steps} steps)[/bold]")
-    console.print(f"Deck: {d1['name']} vs {d2['name']}")
-    console.print()
-
-    model = train_agent(
-        d1["cards"], d2["cards"],
-        d1["energy_types"], d2["energy_types"],
-        total_timesteps=steps,
-        opponent=opponent,
-        save_path=save_path,
-    )
-
-    console.print(f"\n[bold green]Training complete! Model saved to {save_path}[/bold green]")
-
-
-@main.command(name="optimize-deck")
-@click.option("--opponent-deck", default="fire", help="Deck to optimize against")
-@click.option("--energy", default="grass", help="Energy type(s), comma-separated")
-@click.option("--population", default=30, type=int, help="Population size")
-@click.option("--generations", default=10, type=int, help="Number of generations")
-@click.option("--games-per-eval", default=20, type=int, help="Games per fitness eval")
-@click.option("--seed", default=42, type=int)
-def optimize_deck(opponent_deck: str, energy: str, population: int,
-                  generations: int, games_per_eval: int, seed: int):
-    """Find the optimal deck using genetic algorithm."""
-    _ensure_cards_loaded()
-
-    from ptcgp.data.decks.sample_decks import get_deck
-    from ptcgp.training.deck_optimizer import optimize_deck as run_optimizer
-    from ptcgp.engine.types import EnergyType
-    from ptcgp.engine.cards import get_card
-
-    d2 = get_deck(opponent_deck)
-
-    energy_map = {
-        "grass": EnergyType.GRASS, "fire": EnergyType.FIRE,
-        "water": EnergyType.WATER, "lightning": EnergyType.LIGHTNING,
-        "psychic": EnergyType.PSYCHIC, "fighting": EnergyType.FIGHTING,
-        "darkness": EnergyType.DARKNESS, "metal": EnergyType.METAL,
-    }
-    etypes = [energy_map[e.strip().lower()] for e in energy.split(",")]
-
-    console.print(f"\n[bold]Optimizing deck against {d2['name']}[/bold]")
-    console.print(f"Energy types: {[e.value for e in etypes]}")
-    console.print(f"Population: {population}, Generations: {generations}")
-    console.print()
-
-    best = run_optimizer(
-        opponent_deck=d2["cards"],
-        opponent_energy=d2["energy_types"],
-        energy_types=etypes,
-        population_size=population,
-        generations=generations,
-        games_per_eval=games_per_eval,
-        seed=seed,
-    )
-
-    console.print(f"\n[bold green]Best deck (fitness: {best.fitness:.1%}):[/bold green]")
-    from collections import Counter
-    card_counts = Counter(get_card(cid).name for cid in best.cards)
-    for name, count in sorted(card_counts.items()):
-        card = next(c for c in [get_card(cid) for cid in best.cards] if c.name == name)
-        console.print(f"  {count}x {name} ({card.card_type.value})")
-
-
-if __name__ == "__main__":
-    main()
+    p1_rate, p2_rate = result.win_rate
+    console.print(f"\n[bold]Results after {games} games:[/bold]")
+    console.print(f"  Player 1 ({deck1}/{agent1}): {result.wins[0]} wins ({p1_rate * 100:.1f}%)")
+    console.print(f"  Player 2 ({deck2}/{agent2}): {result.wins[1]} wins ({p2_rate * 100:.1f}%)")
+    console.print(f"  Ties: {result.ties} ({result.tie_rate * 100:.1f}%)")
+    if result.errors:
+        console.print(f"  [red]Errors: {result.errors}[/red]")

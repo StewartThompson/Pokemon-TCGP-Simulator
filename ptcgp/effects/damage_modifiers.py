@@ -46,6 +46,8 @@ def compute_damage_modifier(
     attacker_card: Card,
     defender_slot: PokemonSlot,
     defender_card: Card,
+    handler_str: str = "",
+    cached_effects: tuple = (),
 ) -> tuple[int, bool, dict[str, Any]]:
     """Return ``(final_damage, skip_damage, scratch)``.
 
@@ -58,7 +60,13 @@ def compute_damage_modifier(
     damage = base_damage
     skip = False
 
-    effects = parse_effect_text(attack_effect_text)
+    if cached_effects:
+        effects = cached_effects
+    elif handler_str:
+        from ptcgp.effects.apply import parse_handler_string
+        effects = parse_handler_string(handler_str)
+    else:
+        effects = parse_effect_text(attack_effect_text)
     player = state.players[state.current_player]
 
     # Apply flat attack damage bonus from Giovanni-style auras first.

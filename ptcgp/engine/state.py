@@ -1,11 +1,22 @@
 """Core game state dataclasses — the pure data model for the engine."""
 from __future__ import annotations
-import copy
 import random
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 from ptcgp.cards.types import Element
+
+
+def _copy_rng(rng: random.Random) -> random.Random:
+    """Copy a Random instance without calling __init__ or seed().
+
+    ``copy.copy`` uses Python's pickle protocol which reconstructs via
+    ``Random.__init__()`` → ``seed()``, wasting ~1.8s per 1000 games.
+    ``__new__`` + ``setstate`` skips init entirely.
+    """
+    new = random.Random.__new__(random.Random)
+    new.setstate(rng.getstate())
+    return new
 
 
 class StatusEffect(Enum):
@@ -146,7 +157,7 @@ class GameState:
             first_player=self.first_player,
             phase=self.phase,
             winner=self.winner,
-            rng=copy.copy(self.rng),
+            rng=_copy_rng(self.rng),
         )
         return new
 

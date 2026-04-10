@@ -42,7 +42,8 @@
           "Grass",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_nothing"
       }
     ],
     "retreatCost": 4,
@@ -67,7 +68,8 @@
         "damage": "10+",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -239,7 +241,8 @@
         "damage": "",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=10)"
       }
     ],
     "retreatCost": 1,
@@ -289,7 +292,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=100)"
       },
       {
         "name": "Razor Leaf",
@@ -370,7 +374,8 @@
         "damage": "",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "splash_all_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -420,7 +425,8 @@
         "cost": [
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "cant_attack_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -469,7 +475,8 @@
         "damage": "30x",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=2, per=30)"
       }
     ],
     "retreatCost": 1,
@@ -494,7 +501,8 @@
         "damage": "50x",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=3, per=50)"
       }
     ],
     "retreatCost": 2,
@@ -528,7 +536,8 @@
     "abilities": [
       {
         "name": "Wimp Out",
-        "effect": "During your first turn, this Pokémon has no Retreat Cost."
+        "effect": "During your first turn, this Pokémon has no Retreat Cost.",
+        "handler": "passive_first_turn_no_retreat"
       }
     ],
     "evolvesFrom": null,
@@ -552,7 +561,8 @@
           "Grass",
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "bonus_if_just_promoted(bonus=60)"
       }
     ],
     "retreatCost": 2,
@@ -579,7 +589,8 @@
           "Grass",
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "cant_retreat_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -606,7 +617,8 @@
           "Grass",
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -684,7 +696,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_burn | multi_coin_damage(count=2, per=70)"
       }
     ],
     "retreatCost": 2,
@@ -758,7 +771,8 @@
         "damage": "30",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "self_damage(amount=10)"
       }
     ],
     "retreatCost": 1,
@@ -807,7 +821,8 @@
         "damage": "40",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "self_damage(amount=10)"
       }
     ],
     "retreatCost": 1,
@@ -832,7 +847,8 @@
         "damage": "30",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "apply_burn"
       },
       {
         "name": "Scar-Charged Smash",
@@ -842,7 +858,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_self_damaged(bonus=60)"
       }
     ],
     "retreatCost": 2,
@@ -868,7 +885,8 @@
         "cost": [
           "Fire",
           "Fire"
-        ]
+        ],
+        "handler": "discard_random_energy_both_active"
       }
     ],
     "retreatCost": 1,
@@ -918,7 +936,8 @@
         "cost": [
           "Fire",
           "Fire"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": 1,
@@ -945,7 +964,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Fire)"
       }
     ],
     "retreatCost": 4,
@@ -994,7 +1014,8 @@
         "damage": "20",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "passive_retaliate(amount=40)"
       }
     ],
     "retreatCost": 1,
@@ -1019,7 +1040,8 @@
         "damage": "",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "attach_energy_zone_self(count=1, energy_type=Water)"
       }
     ],
     "retreatCost": 1,
@@ -1046,7 +1068,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "splash_bench_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -1096,7 +1119,8 @@
         "cost": [
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "take_less_damage_next_turn(amount=20)"
       }
     ],
     "retreatCost": 3,
@@ -1147,7 +1171,8 @@
         "damage": "",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "apply_sleep"
       }
     ],
     "retreatCost": 1,
@@ -1228,7 +1253,8 @@
     "abilities": [
       {
         "name": "Melodious Healing",
-        "effect": "Once during your turn, you may heal 30 damage from each of your Water Pokémon."
+        "effect": "Once during your turn, you may heal 30 damage from each of your Water Pokémon.",
+        "handler": "heal_all_typed(amount=30, energy_type=Water)"
       }
     ],
     "evolvesFrom": "Brionne",
@@ -1250,7 +1276,8 @@
         "damage": "40",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "self_attack_buff_next_turn(attack_name=insatiable striking, amount=40)"
       }
     ],
     "retreatCost": 3,
@@ -1275,7 +1302,8 @@
         "damage": "",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "search_deck_named_basic(name=wishiwashi)"
       }
     ],
     "retreatCost": 1,
@@ -1302,7 +1330,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "bonus_per_bench_named(per=40, name=wishiwashi)"
       }
     ],
     "retreatCost": 3,
@@ -1354,7 +1383,8 @@
           "Water",
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_opponent_basic(bonus=60)"
       }
     ],
     "retreatCost": 2,
@@ -1386,7 +1416,8 @@
     "abilities": [
       {
         "name": "Innards Out",
-        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, do 50 damage to the Attacking Pokémon."
+        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, do 50 damage to the Attacking Pokémon.",
+        "handler": "passive_ko_retaliate(amount=50)"
       }
     ],
     "evolvesFrom": null,
@@ -1435,7 +1466,8 @@
           "Water",
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "heal_self(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -1487,7 +1519,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_energy(per=30)"
       }
     ],
     "retreatCost": 1,
@@ -1566,7 +1599,8 @@
           "Lightning",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_n_energy_self(count=2, energy_type=Lightning)"
       }
     ],
     "retreatCost": 4,
@@ -1664,7 +1698,8 @@
         "cost": [
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "opponent_no_items_next_turn"
       }
     ],
     "retreatCost": 1,
@@ -1697,7 +1732,8 @@
     "abilities": [
       {
         "name": "Safeguard",
-        "effect": "Prevent all damage done to this Pokémon by attacks from your opponent's Pokémon ex."
+        "effect": "Prevent all damage done to this Pokémon by attacks from your opponent's Pokémon ex.",
+        "handler": "passive_prevent_ex_damage"
       }
     ],
     "evolvesFrom": null,
@@ -1719,7 +1755,8 @@
         "damage": "20+",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=30)"
       }
     ],
     "retreatCost": 1,
@@ -1746,7 +1783,8 @@
           "Lightning",
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "switch_self_to_bench_typed(element=Lightning)"
       }
     ],
     "retreatCost": 1,
@@ -1772,7 +1810,8 @@
         "cost": [
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "prevent_damage_next_turn"
       }
     ],
     "retreatCost": 1,
@@ -1798,7 +1837,8 @@
         "cost": [
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "cant_retreat_next_turn"
       }
     ],
     "retreatCost": 1,
@@ -1823,7 +1863,8 @@
         "damage": "",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "attach_energy_zone_self(count=1, energy_type=Psychic)"
       }
     ],
     "retreatCost": 1,
@@ -1923,7 +1964,8 @@
         "damage": "30",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "opponent_no_energy_next_turn"
       }
     ],
     "retreatCost": 1,
@@ -1949,7 +1991,8 @@
         "cost": [
           "Psychic",
           "Psychic"
-        ]
+        ],
+        "handler": "apply_confusion"
       }
     ],
     "retreatCost": 1,
@@ -1974,7 +2017,8 @@
         "damage": "20+",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "bonus_if_ko_last_turn(bonus=60)"
       }
     ],
     "retreatCost": 1,
@@ -2055,7 +2099,8 @@
     "abilities": [
       {
         "name": "Flower Shield",
-        "effect": "Each of your Pokémon that has any Psychic Energy attached recovers from all Special Conditions and can't be affected by any Special Conditions."
+        "effect": "Each of your Pokémon that has any Psychic Energy attached recovers from all Special Conditions and can't be affected by any Special Conditions.",
+        "handler": "passive_psychic_cleanse"
       }
     ],
     "evolvesFrom": null,
@@ -2129,7 +2174,8 @@
         "cost": [
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "splash_bench_own(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -2154,7 +2200,8 @@
         "damage": "",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -2179,7 +2226,8 @@
         "damage": "",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "switch_self_to_bench"
       }
     ],
     "retreatCost": 1,
@@ -2205,7 +2253,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "take_less_damage_next_turn(amount=50)"
       }
     ],
     "retreatCost": 3,
@@ -2239,7 +2288,8 @@
     "abilities": [
       {
         "name": "Psychic Connect",
-        "effect": "Once during your turn, you may move all Psychic Energy from 1 of your Benched Psychic Pokémon to your Active Pokémon."
+        "effect": "Once during your turn, you may move all Psychic Energy from 1 of your Benched Psychic Pokémon to your Active Pokémon.",
+        "handler": "move_all_typed_energy_bench_to_active(energy_type=Psychic, element_filter=Psychic)"
       }
     ],
     "evolvesFrom": "Cosmoem",
@@ -2264,7 +2314,8 @@
           "Psychic",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "self_cant_attack_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -2339,7 +2390,8 @@
         "cost": [
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "switch_opponent_active"
       }
     ],
     "retreatCost": 3,
@@ -2471,7 +2523,8 @@
     "abilities": [
       {
         "name": "Guts",
-        "effect": "If this Pokémon would be Knocked Out by damage from an attack, flip a coin. If heads, this Pokémon is not Knocked Out, and its remaining HP becomes 10."
+        "effect": "If this Pokémon would be Knocked Out by damage from an attack, flip a coin. If heads, this Pokémon is not Knocked Out, and its remaining HP becomes 10.",
+        "handler": "passive_survive_ko_coin_flip(remaining_hp=10)"
       }
     ],
     "evolvesFrom": "Gurdurr",
@@ -2517,7 +2570,8 @@
         "damage": "",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "search_deck_evolves_from(name=rockruff)"
       }
     ],
     "retreatCost": 1,
@@ -2568,7 +2622,8 @@
           "Fighting",
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_discard_random_energy_opponent"
       }
     ],
     "retreatCost": 1,
@@ -2594,7 +2649,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bonus_if_opponent_more_hp(bonus=50)"
       }
     ],
     "retreatCost": 1,
@@ -2647,7 +2703,8 @@
           "Fighting",
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=40)"
       }
     ],
     "retreatCost": 4,
@@ -2680,7 +2737,8 @@
     "abilities": [
       {
         "name": "Offload Pass",
-        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, move all Fighting Energy from this Pokémon to 1 of your Benched Pokémon."
+        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, move all Fighting Energy from this Pokémon to 1 of your Benched Pokémon.",
+        "handler": "passive_ko_energy_transfer"
       }
     ],
     "evolvesFrom": null,
@@ -2703,7 +2761,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=40)"
       }
     ],
     "retreatCost": 1,
@@ -2753,7 +2812,8 @@
         "cost": [
           "Darkness",
           "Darkness"
-        ]
+        ],
+        "handler": "discard_random_item_from_hand"
       }
     ],
     "retreatCost": 3,
@@ -2810,7 +2870,8 @@
     "abilities": [
       {
         "name": "Fur Coat",
-        "effect": "This Pokémon takes −20 damage from attacks."
+        "effect": "This Pokémon takes −20 damage from attacks.",
+        "handler": "passive_damage_reduction(amount=20)"
       }
     ],
     "evolvesFrom": "Alolan Meowth",
@@ -2859,7 +2920,8 @@
           "Darkness",
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_random_status"
       }
     ],
     "retreatCost": 3,
@@ -2885,7 +2947,8 @@
         "cost": [
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_opponent_has_status(bonus=60)"
       }
     ],
     "retreatCost": 1,
@@ -2936,7 +2999,8 @@
           "Darkness",
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": 3,
@@ -2985,7 +3049,8 @@
         "damage": "20x",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=4, per=20)"
       }
     ],
     "retreatCost": 2,
@@ -3035,7 +3100,8 @@
         "cost": [
           "Metal",
           "Metal"
-        ]
+        ],
+        "handler": "flip_until_tails_damage(per=70)"
       }
     ],
     "retreatCost": 1,
@@ -3084,7 +3150,8 @@
         "damage": "30",
         "cost": [
           "Metal"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "retreatCost": 3,
@@ -3109,7 +3176,8 @@
         "damage": "10",
         "cost": [
           "Metal"
-        ]
+        ],
+        "handler": "draw_one_card"
       }
     ],
     "retreatCost": 1,
@@ -3135,7 +3203,8 @@
         "cost": [
           "Metal",
           "Metal"
-        ]
+        ],
+        "handler": "self_damage(amount=10)"
       }
     ],
     "retreatCost": 2,
@@ -3143,7 +3212,8 @@
     "abilities": [
       {
         "name": "Rising Road",
-        "effect": "Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon."
+        "effect": "Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon.",
+        "handler": "ability_bench_to_active"
       }
     ],
     "evolvesFrom": "Cosmoem",
@@ -3166,7 +3236,8 @@
         "cost": [
           "Metal",
           "Metal"
-        ]
+        ],
+        "handler": "bonus_if_opponent_has_ability(bonus=40)"
       }
     ],
     "retreatCost": 1,
@@ -3192,7 +3263,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_bench_damaged(bonus=50)"
       }
     ],
     "retreatCost": 2,
@@ -3267,7 +3339,8 @@
         "cost": [
           "Lightning",
           "Fighting"
-        ]
+        ],
+        "handler": "take_more_damage_next_turn(amount=30)"
       }
     ],
     "retreatCost": 2,
@@ -3294,7 +3367,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=50)"
       }
     ],
     "retreatCost": 2,
@@ -3343,7 +3417,8 @@
         "damage": "30",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "attach_colorless_energy_zone_bench"
       }
     ],
     "retreatCost": 1,
@@ -3392,7 +3467,8 @@
         "damage": "20+",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_opponent_element(bonus=30, element=Darkness)"
       }
     ],
     "retreatCost": 1,
@@ -3567,7 +3643,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "self_confuse"
       }
     ],
     "retreatCost": 3,
@@ -3593,7 +3670,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "opponent_cost_increase_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -3626,7 +3704,8 @@
     "abilities": [
       {
         "name": "Comatose",
-        "effect": "As long as this Pokémon is in the Active Spot, whenever you attach an Energy from your Energy Zone to it, it is now Asleep."
+        "effect": "As long as this Pokémon is in the Active Spot, whenever you attach an Energy from your Energy Zone to it, it is now Asleep.",
+        "handler": "passive_energy_sleep"
       }
     ],
     "evolvesFrom": null,
@@ -3647,7 +3726,8 @@
     "abilities": [
       {
         "name": "Big Malasada",
-        "effect": "Heal 10 damage and remove a random Special Condition from your Active Pokémon."
+        "effect": "Heal 10 damage and remove a random Special Condition from your Active Pokémon.",
+        "handler": "big_malasada(amount=10)"
       }
     ],
     "evolvesFrom": null,
@@ -3668,7 +3748,8 @@
     "abilities": [
       {
         "name": "Fishing Net",
-        "effect": "Put a random Basic Water Pokémon from your discard pile into your hand."
+        "effect": "Put a random Basic Water Pokémon from your discard pile into your hand.",
+        "handler": "fishing_net"
       }
     ],
     "evolvesFrom": null,
@@ -3711,7 +3792,8 @@
     "abilities": [
       {
         "name": "Rotom Dex",
-        "effect": "Look at the top card of your deck. Then, you may shuffle your deck."
+        "effect": "Look at the top card of your deck. Then, you may shuffle your deck.",
+        "handler": "look_top_of_deck(count=1)"
       }
     ],
     "evolvesFrom": null,
@@ -3732,7 +3814,8 @@
     "abilities": [
       {
         "name": "Poison Barb",
-        "effect": "If the Pokémon this card is attached to is your Active Pokémon and is damaged by an attack from your opponent's Pokémon, the Attacking Pokémon is now Poisoned."
+        "effect": "If the Pokémon this card is attached to is your Active Pokémon and is damaged by an attack from your opponent's Pokémon, the Attacking Pokémon is now Poisoned.",
+        "handler": "passive_retaliate_poison"
       }
     ],
     "evolvesFrom": null,
@@ -3753,7 +3836,8 @@
     "abilities": [
       {
         "name": "Leaf Cape",
-        "effect": "The Grass Pokémon this card is attached to gets +30 HP."
+        "effect": "The Grass Pokémon this card is attached to gets +30 HP.",
+        "handler": "hp_bonus(amount=30)"
       }
     ],
     "evolvesFrom": null,
@@ -3774,7 +3858,8 @@
     "abilities": [
       {
         "name": "Acerola",
-        "effect": "Choose 1 of your Palossand or Mimikyu that has damage on it, and move 40 of its damage to your opponent's Active Pokémon."
+        "effect": "Choose 1 of your Palossand or Mimikyu that has damage on it, and move 40 of its damage to your opponent's Active Pokémon.",
+        "handler": "move_damage_to_opponent(names=(palossand, mimikyu), amount=40)"
       }
     ],
     "evolvesFrom": null,
@@ -3795,7 +3880,8 @@
     "abilities": [
       {
         "name": "Ilima",
-        "effect": "Put 1 of your Colorless Pokémon that has damage on it into your hand."
+        "effect": "Put 1 of your Colorless Pokémon that has damage on it into your hand.",
+        "handler": "return_colorless_to_hand"
       }
     ],
     "evolvesFrom": null,
@@ -3816,7 +3902,8 @@
     "abilities": [
       {
         "name": "Kiawe",
-        "effect": "Choose 1 of your Alolan Marowak or Turtonator. Take 2 Fire Energy from your Energy Zone and attach it to that Pokémon. Your turn ends."
+        "effect": "Choose 1 of your Alolan Marowak or Turtonator. Take 2 Fire Energy from your Energy Zone and attach it to that Pokémon. Your turn ends.",
+        "handler": "attach_energy_named_end_turn(names=(alolan marowak, turtonator), count=2, energy_type=Fire)"
       }
     ],
     "evolvesFrom": null,
@@ -3837,7 +3924,8 @@
     "abilities": [
       {
         "name": "Guzma",
-        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon."
+        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon.",
+        "handler": "discard_all_opponent_tools"
       }
     ],
     "evolvesFrom": null,
@@ -3858,7 +3946,8 @@
     "abilities": [
       {
         "name": "Lana",
-        "effect": "You can use this card only if you have Araquanid in play. Switch in 1 of your opponent's Benched Pokémon to the Active Spot."
+        "effect": "You can use this card only if you have Araquanid in play. Switch in 1 of your opponent's Benched Pokémon to the Active Spot.",
+        "handler": "switch_opponent_active"
       }
     ],
     "evolvesFrom": null,
@@ -3879,7 +3968,8 @@
     "abilities": [
       {
         "name": "Sophocles",
-        "effect": "During this turn, attacks used by your Alolan Golem, Vikavolt, or Togedemaru do +30 damage to your opponent's Active Pokémon."
+        "effect": "During this turn, attacks used by your Alolan Golem, Vikavolt, or Togedemaru do +30 damage to your opponent's Active Pokémon.",
+        "handler": "supporter_damage_aura(amount=30, names=(alolan golem, vikavolt, togedemaru))"
       }
     ],
     "evolvesFrom": null,
@@ -3900,7 +3990,8 @@
     "abilities": [
       {
         "name": "Mallow",
-        "effect": "Heal all damage from 1 of your Shiinotic or Tsareena. If you do, discard all Energy from that Pokémon."
+        "effect": "Heal all damage from 1 of your Shiinotic or Tsareena. If you do, discard all Energy from that Pokémon.",
+        "handler": "heal_all_named_discard_energy(names=(shiinotic, tsareena))"
       }
     ],
     "evolvesFrom": null,
@@ -3921,7 +4012,8 @@
     "abilities": [
       {
         "name": "Lillie",
-        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon."
+        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon.",
+        "handler": "heal_stage2_target(amount=60)"
       }
     ],
     "evolvesFrom": null,
@@ -3945,7 +4037,8 @@
           "Grass",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_nothing"
       }
     ],
     "retreatCost": 4,
@@ -3994,7 +4087,8 @@
         "damage": "50x",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=3, per=50)"
       }
     ],
     "retreatCost": 2,
@@ -4021,7 +4115,8 @@
           "Grass",
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -4048,7 +4143,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_burn | multi_coin_damage(count=2, per=70)"
       }
     ],
     "retreatCost": 2,
@@ -4075,7 +4171,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Fire)"
       }
     ],
     "retreatCost": 4,
@@ -4100,7 +4197,8 @@
         "damage": "",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "attach_energy_zone_self(count=1, energy_type=Water)"
       }
     ],
     "retreatCost": 1,
@@ -4132,7 +4230,8 @@
     "abilities": [
       {
         "name": "Innards Out",
-        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, do 50 damage to the Attacking Pokémon."
+        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, do 50 damage to the Attacking Pokémon.",
+        "handler": "passive_ko_retaliate(amount=50)"
       }
     ],
     "evolvesFrom": null,
@@ -4156,7 +4255,8 @@
           "Water",
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "heal_self(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -4189,7 +4289,8 @@
     "abilities": [
       {
         "name": "Safeguard",
-        "effect": "Prevent all damage done to this Pokémon by attacks from your opponent's Pokémon ex."
+        "effect": "Prevent all damage done to this Pokémon by attacks from your opponent's Pokémon ex.",
+        "handler": "passive_prevent_ex_damage"
       }
     ],
     "evolvesFrom": null,
@@ -4213,7 +4314,8 @@
           "Lightning",
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "switch_self_to_bench_typed(element=Lightning)"
       }
     ],
     "retreatCost": 1,
@@ -4270,7 +4372,8 @@
     "abilities": [
       {
         "name": "Flower Shield",
-        "effect": "Each of your Pokémon that has any Psychic Energy attached recovers from all Special Conditions and can't be affected by any Special Conditions."
+        "effect": "Each of your Pokémon that has any Psychic Energy attached recovers from all Special Conditions and can't be affected by any Special Conditions.",
+        "handler": "passive_psychic_cleanse"
       }
     ],
     "evolvesFrom": null,
@@ -4317,7 +4420,8 @@
         "damage": "",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -4342,7 +4446,8 @@
         "damage": "",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "switch_self_to_bench"
       }
     ],
     "retreatCost": 1,
@@ -4367,7 +4472,8 @@
         "damage": "",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "search_deck_evolves_from(name=rockruff)"
       }
     ],
     "retreatCost": 1,
@@ -4395,7 +4501,8 @@
           "Fighting",
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=40)"
       }
     ],
     "retreatCost": 4,
@@ -4421,7 +4528,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=40)"
       }
     ],
     "retreatCost": 1,
@@ -4447,7 +4555,8 @@
         "cost": [
           "Metal",
           "Metal"
-        ]
+        ],
+        "handler": "bonus_if_opponent_has_ability(bonus=40)"
       }
     ],
     "retreatCost": 1,
@@ -4473,7 +4582,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_bench_damaged(bonus=50)"
       }
     ],
     "retreatCost": 2,
@@ -4525,7 +4635,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "self_confuse"
       }
     ],
     "retreatCost": 3,
@@ -4558,7 +4669,8 @@
     "abilities": [
       {
         "name": "Comatose",
-        "effect": "As long as this Pokémon is in the Active Spot, whenever you attach an Energy from your Energy Zone to it, it is now Asleep."
+        "effect": "As long as this Pokémon is in the Active Spot, whenever you attach an Energy from your Energy Zone to it, it is now Asleep.",
+        "handler": "passive_energy_sleep"
       }
     ],
     "evolvesFrom": null,
@@ -4581,7 +4693,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=100)"
       },
       {
         "name": "Razor Leaf",
@@ -4616,7 +4729,8 @@
           "Grass",
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "cant_retreat_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -4641,7 +4755,8 @@
         "damage": "30",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "apply_burn"
       },
       {
         "name": "Scar-Charged Smash",
@@ -4651,7 +4766,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_self_damaged(bonus=60)"
       }
     ],
     "retreatCost": 2,
@@ -4676,7 +4792,8 @@
         "damage": "40",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "self_attack_buff_next_turn(attack_name=insatiable striking, amount=40)"
       }
     ],
     "retreatCost": 3,
@@ -4703,7 +4820,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "bonus_per_bench_named(per=40, name=wishiwashi)"
       }
     ],
     "retreatCost": 3,
@@ -4730,7 +4848,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_energy(per=30)"
       }
     ],
     "retreatCost": 1,
@@ -4764,7 +4883,8 @@
     "abilities": [
       {
         "name": "Psychic Connect",
-        "effect": "Once during your turn, you may move all Psychic Energy from 1 of your Benched Psychic Pokémon to your Active Pokémon."
+        "effect": "Once during your turn, you may move all Psychic Energy from 1 of your Benched Psychic Pokémon to your Active Pokémon.",
+        "handler": "move_all_typed_energy_bench_to_active(energy_type=Psychic, element_filter=Psychic)"
       }
     ],
     "evolvesFrom": "Cosmoem",
@@ -4794,7 +4914,8 @@
     "abilities": [
       {
         "name": "Offload Pass",
-        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, move all Fighting Energy from this Pokémon to 1 of your Benched Pokémon."
+        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, move all Fighting Energy from this Pokémon to 1 of your Benched Pokémon.",
+        "handler": "passive_ko_energy_transfer"
       }
     ],
     "evolvesFrom": null,
@@ -4818,7 +4939,8 @@
           "Darkness",
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_random_status"
       }
     ],
     "retreatCost": 3,
@@ -4844,7 +4966,8 @@
         "cost": [
           "Metal",
           "Metal"
-        ]
+        ],
+        "handler": "self_damage(amount=10)"
       }
     ],
     "retreatCost": 2,
@@ -4852,7 +4975,8 @@
     "abilities": [
       {
         "name": "Rising Road",
-        "effect": "Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon."
+        "effect": "Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon.",
+        "handler": "ability_bench_to_active"
       }
     ],
     "evolvesFrom": "Cosmoem",
@@ -4873,7 +4997,8 @@
     "abilities": [
       {
         "name": "Acerola",
-        "effect": "Choose 1 of your Palossand or Mimikyu that has damage on it, and move 40 of its damage to your opponent's Active Pokémon."
+        "effect": "Choose 1 of your Palossand or Mimikyu that has damage on it, and move 40 of its damage to your opponent's Active Pokémon.",
+        "handler": "move_damage_to_opponent(names=(palossand, mimikyu), amount=40)"
       }
     ],
     "evolvesFrom": null,
@@ -4894,7 +5019,8 @@
     "abilities": [
       {
         "name": "Ilima",
-        "effect": "Put 1 of your Colorless Pokémon that has damage on it into your hand."
+        "effect": "Put 1 of your Colorless Pokémon that has damage on it into your hand.",
+        "handler": "return_colorless_to_hand"
       }
     ],
     "evolvesFrom": null,
@@ -4915,7 +5041,8 @@
     "abilities": [
       {
         "name": "Kiawe",
-        "effect": "Choose 1 of your Alolan Marowak or Turtonator. Take 2 Fire Energy from your Energy Zone and attach it to that Pokémon. Your turn ends."
+        "effect": "Choose 1 of your Alolan Marowak or Turtonator. Take 2 Fire Energy from your Energy Zone and attach it to that Pokémon. Your turn ends.",
+        "handler": "attach_energy_named_end_turn(names=(alolan marowak, turtonator), count=2, energy_type=Fire)"
       }
     ],
     "evolvesFrom": null,
@@ -4936,7 +5063,8 @@
     "abilities": [
       {
         "name": "Guzma",
-        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon."
+        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon.",
+        "handler": "discard_all_opponent_tools"
       }
     ],
     "evolvesFrom": null,
@@ -4957,7 +5085,8 @@
     "abilities": [
       {
         "name": "Lana",
-        "effect": "You can use this card only if you have Araquanid in play. Switch in 1 of your opponent's Benched Pokémon to the Active Spot."
+        "effect": "You can use this card only if you have Araquanid in play. Switch in 1 of your opponent's Benched Pokémon to the Active Spot.",
+        "handler": "switch_opponent_active"
       }
     ],
     "evolvesFrom": null,
@@ -4978,7 +5107,8 @@
     "abilities": [
       {
         "name": "Sophocles",
-        "effect": "During this turn, attacks used by your Alolan Golem, Vikavolt, or Togedemaru do +30 damage to your opponent's Active Pokémon."
+        "effect": "During this turn, attacks used by your Alolan Golem, Vikavolt, or Togedemaru do +30 damage to your opponent's Active Pokémon.",
+        "handler": "supporter_damage_aura(amount=30, names=(alolan golem, vikavolt, togedemaru))"
       }
     ],
     "evolvesFrom": null,
@@ -4999,7 +5129,8 @@
     "abilities": [
       {
         "name": "Mallow",
-        "effect": "Heal all damage from 1 of your Shiinotic or Tsareena. If you do, discard all Energy from that Pokémon."
+        "effect": "Heal all damage from 1 of your Shiinotic or Tsareena. If you do, discard all Energy from that Pokémon.",
+        "handler": "heal_all_named_discard_energy(names=(shiinotic, tsareena))"
       }
     ],
     "evolvesFrom": null,
@@ -5020,7 +5151,8 @@
     "abilities": [
       {
         "name": "Lillie",
-        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon."
+        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon.",
+        "handler": "heal_stage2_target(amount=60)"
       }
     ],
     "evolvesFrom": null,
@@ -5043,7 +5175,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=100)"
       },
       {
         "name": "Razor Leaf",
@@ -5078,7 +5211,8 @@
           "Grass",
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "cant_retreat_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -5103,7 +5237,8 @@
         "damage": "30",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "apply_burn"
       },
       {
         "name": "Scar-Charged Smash",
@@ -5113,7 +5248,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_self_damaged(bonus=60)"
       }
     ],
     "retreatCost": 2,
@@ -5138,7 +5274,8 @@
         "damage": "40",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "self_attack_buff_next_turn(attack_name=insatiable striking, amount=40)"
       }
     ],
     "retreatCost": 3,
@@ -5165,7 +5302,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "bonus_per_bench_named(per=40, name=wishiwashi)"
       }
     ],
     "retreatCost": 3,
@@ -5192,7 +5330,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_energy(per=30)"
       }
     ],
     "retreatCost": 1,
@@ -5226,7 +5365,8 @@
     "abilities": [
       {
         "name": "Psychic Connect",
-        "effect": "Once during your turn, you may move all Psychic Energy from 1 of your Benched Psychic Pokémon to your Active Pokémon."
+        "effect": "Once during your turn, you may move all Psychic Energy from 1 of your Benched Psychic Pokémon to your Active Pokémon.",
+        "handler": "move_all_typed_energy_bench_to_active(energy_type=Psychic, element_filter=Psychic)"
       }
     ],
     "evolvesFrom": "Cosmoem",
@@ -5256,7 +5396,8 @@
     "abilities": [
       {
         "name": "Offload Pass",
-        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, move all Fighting Energy from this Pokémon to 1 of your Benched Pokémon."
+        "effect": "If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, move all Fighting Energy from this Pokémon to 1 of your Benched Pokémon.",
+        "handler": "passive_ko_energy_transfer"
       }
     ],
     "evolvesFrom": null,
@@ -5280,7 +5421,8 @@
           "Darkness",
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_random_status"
       }
     ],
     "retreatCost": 3,
@@ -5306,7 +5448,8 @@
         "cost": [
           "Metal",
           "Metal"
-        ]
+        ],
+        "handler": "self_damage(amount=10)"
       }
     ],
     "retreatCost": 2,
@@ -5314,7 +5457,8 @@
     "abilities": [
       {
         "name": "Rising Road",
-        "effect": "Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon."
+        "effect": "Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon.",
+        "handler": "ability_bench_to_active"
       }
     ],
     "evolvesFrom": "Cosmoem",
@@ -5335,7 +5479,8 @@
     "abilities": [
       {
         "name": "Guzma",
-        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon."
+        "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon.",
+        "handler": "discard_all_opponent_tools"
       }
     ],
     "evolvesFrom": null,
@@ -5356,7 +5501,8 @@
     "abilities": [
       {
         "name": "Lillie",
-        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon."
+        "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon.",
+        "handler": "heal_stage2_target(amount=60)"
       }
     ],
     "evolvesFrom": null,
@@ -5432,7 +5578,8 @@
           "Grass",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "heal_self(amount=30)"
       }
     ],
     "retreatCost": 3,
@@ -5485,7 +5632,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_energy(per=20)"
       }
     ],
     "retreatCost": 3,
@@ -5561,7 +5709,8 @@
           "Water",
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_extra_energy(threshold=2, bonus=60, energy_type=Water)"
       }
     ],
     "retreatCost": 3,
@@ -5634,7 +5783,8 @@
         "damage": "",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_shuffle_opponent_card"
       }
     ],
     "retreatCost": 1,
@@ -5683,7 +5833,8 @@
         "damage": "50",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "opponent_no_supporter_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -5758,7 +5909,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bonus_if_extra_energy(threshold=2, bonus=50, energy_type=Fighting)"
       }
     ],
     "retreatCost": 2,
@@ -5783,7 +5935,8 @@
         "damage": "",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "defender_attacks_do_less_damage(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -5864,7 +6017,8 @@
     "abilities": [
       {
         "name": "Comforting Song",
-        "effect": "Once during your turn, you may heal 20 damage from your Active Pokémon."
+        "effect": "Once during your turn, you may heal 20 damage from your Active Pokémon.",
+        "handler": "heal_active(amount=20)"
       }
     ],
     "evolvesFrom": "Jigglypuff",
@@ -5898,7 +6052,8 @@
           "Grass",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "heal_self(amount=30)"
       }
     ],
     "retreatCost": 3,
@@ -5923,7 +6078,8 @@
         "damage": "40+",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=40)"
       }
     ],
     "retreatCost": 3,
@@ -5958,7 +6114,8 @@
           "Water",
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_extra_energy(threshold=2, bonus=60, energy_type=Water)"
       }
     ],
     "retreatCost": 3,
@@ -6017,7 +6174,8 @@
     "abilities": [
       {
         "name": "Shadowy Spellbind",
-        "effect": "As long as this Pokémon is in the Active Spot, your opponent can't use any Supporter cards from their hand."
+        "effect": "As long as this Pokémon is in the Active Spot, your opponent can't use any Supporter cards from their hand.",
+        "handler": "passive_block_supporters"
       }
     ],
     "evolvesFrom": "Haunter",
@@ -6066,7 +6224,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=2, per=80)"
       }
     ],
     "retreatCost": 1,
@@ -6093,7 +6252,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_sleep"
       }
     ],
     "retreatCost": 2,
@@ -6127,7 +6287,8 @@
     "abilities": [
       {
         "name": "Psychic Connect",
-        "effect": "Once during your turn, you may move all Psychic Energy from 1 of your Benched Psychic Pokémon to your Active Pokémon."
+        "effect": "Once during your turn, you may move all Psychic Energy from 1 of your Benched Psychic Pokémon to your Active Pokémon.",
+        "handler": "move_all_typed_energy_bench_to_active(energy_type=Psychic, element_filter=Psychic)"
       }
     ],
     "evolvesFrom": "Cosmoem",
@@ -6150,7 +6311,8 @@
         "cost": [
           "Metal",
           "Metal"
-        ]
+        ],
+        "handler": "self_damage(amount=10)"
       }
     ],
     "retreatCost": 2,
@@ -6158,7 +6320,8 @@
     "abilities": [
       {
         "name": "Rising Road",
-        "effect": "Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon."
+        "effect": "Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon.",
+        "handler": "ability_bench_to_active"
       }
     ],
     "evolvesFrom": "Cosmoem",

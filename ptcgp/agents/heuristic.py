@@ -28,12 +28,24 @@ from ptcgp.agents.base import Agent
 from ptcgp.cards.card import Card
 from ptcgp.cards.database import get_card
 from ptcgp.cards.types import CardKind, CostSymbol, Element, Stage
-from ptcgp.effects.parser import parse_effect_text
 from ptcgp.engine.actions import Action, ActionKind, SlotRef
 from ptcgp.engine.attack import can_pay_cost
 from ptcgp.engine.constants import WEAKNESS_BONUS
 from ptcgp.engine.slot_utils import get_slot
 from ptcgp.engine.state import GameState, PlayerState, PokemonSlot, StatusEffect
+
+
+def _effect_names(handler_str: str, effect_text: str, cached_effects: tuple = ()) -> set[str]:
+    """Return effect names using cached_effects when available, else parse."""
+    if cached_effects:
+        return {e.name for e in cached_effects}
+    if handler_str:
+        from ptcgp.effects.apply import parse_handler_string
+        return {e.name for e in parse_handler_string(handler_str)}
+    if effect_text:
+        from ptcgp.effects.parser import parse_effect_text
+        return {e.name for e in parse_effect_text(effect_text)}
+    return set()
 
 
 class HeuristicAgent(Agent):
@@ -121,7 +133,7 @@ class HeuristicAgent(Agent):
             damage += WEAKNESS_BONUS
 
         # Classify side effects: penalize costly ones, reward beneficial ones
-        effect_names = {e.name for e in parse_effect_text(attack.effect_text)} if attack.effect_text else set()
+        effect_names = _effect_names(attack.handler, attack.effect_text, attack.cached_effects)
         side_effect_mod = 0.0
         if "discard_energy_self" in effect_names:
             side_effect_mod -= 8.0
@@ -211,7 +223,7 @@ class HeuristicAgent(Agent):
         return 10.0
 
     def _item(self, state: GameState, card: Card, action: Action) -> float:
-        effects = {e.name for e in parse_effect_text(card.trainer_effect_text)}
+        effects = _effect_names(card.trainer_handler, card.trainer_effect_text, card.cached_trainer_effects)
 
         # --- Rare Candy: treat like an evolve, but even higher priority ---
         if "rare_candy_evolve" in effects:
@@ -263,7 +275,7 @@ class HeuristicAgent(Agent):
         return 22.0
 
     def _supporter(self, state: GameState, card: Card) -> float:
-        effects = {e.name for e in parse_effect_text(card.trainer_effect_text)}
+        effects = _effect_names(card.trainer_handler, card.trainer_effect_text, card.cached_trainer_effects)
 
         # --- Professor's Research: ALWAYS play first in the turn ---
         if "draw_cards" in effects:
@@ -391,7 +403,7 @@ class HeuristicAgent(Agent):
         if card.ability is None:
             return 10.0
 
-        effects = {e.name for e in parse_effect_text(card.ability.effect_text)}
+        effects = _effect_names(card.ability.handler, card.ability.effect_text, card.ability.cached_effects)
 
         if "heal_all_own" in effects:
             per_mon = 20

@@ -110,7 +110,7 @@ def execute_attack(
     final_damage = base_damage
     mod_skip = False
     modifier_result: dict = {}
-    if attack.effect_text:
+    if attack.effect_text or attack.handler:
         from ptcgp.effects.damage_modifiers import compute_damage_modifier
         final_damage, mod_skip, modifier_result = compute_damage_modifier(
             state=state,
@@ -121,6 +121,8 @@ def execute_attack(
             attacker_card=attacker_card,
             defender_slot=defender_slot,
             defender_card=defender_card,
+            handler_str=attack.handler,
+            cached_effects=attack.cached_effects,
         )
 
     # -- Phase 2: apply damage ----------------------------------------- #
@@ -142,13 +144,10 @@ def execute_attack(
             attacker_slot.current_hp = max(0, attacker_slot.current_hp - retaliate)
 
     # -- Phase 3: side-effect handlers --------------------------------- #
-    if attack.effect_text:
+    if attack.effect_text or attack.handler:
         from ptcgp.effects.apply import apply_effects
         attacker_ref = SlotRef.active(state.current_player)
         target_ref = sub_target if sub_target is not None else SlotRef.active(state.opponent_index)
-        # Expose damage_dealt + modifier scratch data to effect handlers (used
-        # by effects like "Heal from this Pokémon the same amount of damage you
-        # did to your opponent's Active Pokémon").
         extra = {"damage_dealt": damage_dealt, **modifier_result}
         state = apply_effects(
             state,
@@ -157,6 +156,8 @@ def execute_attack(
             source_ref=attacker_ref,
             target_ref=target_ref,
             extra=extra,
+            handler_str=attack.handler,
+            cached_effects=attack.cached_effects,
         )
 
     return state

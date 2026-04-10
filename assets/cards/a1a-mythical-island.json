@@ -15,7 +15,8 @@
         "damage": "",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "attach_energy_zone_self(count=1, energy_type=Grass)"
       }
     ],
     "retreatCost": "1",
@@ -43,7 +44,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_energy(per=20)"
       }
     ],
     "retreatCost": "3",
@@ -69,7 +71,8 @@
         "cost": [
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_per_energy_damage(per=50)"
       }
     ],
     "retreatCost": "1",
@@ -154,7 +157,8 @@
     "abilities": [
       {
         "name": "Jungle Totem",
-        "effect": "Each Grass Energy attached to your Grass Pokémon provides 2 Grass Energy. This effect doesn't stack."
+        "effect": "Each Grass Energy attached to your Grass Pokémon provides 2 Grass Energy. This effect doesn't stack.",
+        "handler": "passive_double_grass_energy"
       }
     ],
     "evolvesFrom": "Servine",
@@ -201,7 +205,8 @@
         "cost": [
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "apply_sleep"
       }
     ],
     "retreatCost": "2",
@@ -226,7 +231,8 @@
         "damage": "20+",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "bonus_if_extra_energy(threshold=3, bonus=70, energy_type=Grass)"
       }
     ],
     "retreatCost": "2",
@@ -251,7 +257,8 @@
         "damage": "10+",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=30)"
       }
     ],
     "retreatCost": "1",
@@ -277,7 +284,8 @@
         "cost": [
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=60)"
       }
     ],
     "retreatCost": "1",
@@ -303,7 +311,8 @@
         "cost": [
           "Fire",
           "Fire"
-        ]
+        ],
+        "handler": "discard_n_energy_self(count=2, energy_type=Fire)"
       }
     ],
     "retreatCost": "2",
@@ -355,7 +364,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_n_energy_self(count=2, energy_type=Fire) | bench_hit_opponent(amount=80)"
       },
       {
         "name": "Volcanic Ash",
@@ -365,7 +375,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_n_energy_self(count=2, energy_type=Fire) | bench_hit_opponent(amount=80)"
       },
       {
         "name": "Volcanic Ash",
@@ -375,7 +386,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_n_energy_self(count=2, energy_type=Fire) | bench_hit_opponent(amount=80)"
       },
       {
         "name": "Volcanic Ash",
@@ -385,7 +397,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_n_energy_self(count=2, energy_type=Fire) | bench_hit_opponent(amount=80)"
       }
     ],
     "retreatCost": "2",
@@ -410,7 +423,8 @@
         "damage": "10+",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_opponent_poisoned(bonus=40)"
       }
     ],
     "retreatCost": "1",
@@ -435,7 +449,8 @@
         "damage": "30",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": "1",
@@ -460,7 +475,8 @@
         "damage": "",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "switch_self_to_bench"
       }
     ],
     "retreatCost": "1",
@@ -488,7 +504,8 @@
           "Water",
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_random_energy_all_pokemon"
       }
     ],
     "retreatCost": "3",
@@ -522,7 +539,8 @@
     "abilities": [
       {
         "name": "Wash Out",
-        "effect": "As often as you like during your turn, you may move a Water Energy from 1 of your Benched Water Pokémon to your Active Water Pokémon."
+        "effect": "As often as you like during your turn, you may move a Water Energy from 1 of your Benched Water Pokémon to your Active Water Pokémon.",
+        "handler": "move_water_bench_to_active"
       }
     ],
     "evolvesFrom": "Eevee",
@@ -569,7 +587,8 @@
         "cost": [
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=50)"
       },
       {
         "name": "Aqua Liner",
@@ -578,7 +597,8 @@
         "cost": [
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=50)"
       },
       {
         "name": "Aqua Liner",
@@ -587,7 +607,8 @@
         "cost": [
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=50)"
       }
     ],
     "retreatCost": "0",
@@ -639,7 +660,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "coin_flip_discard_random_energy_opponent"
       }
     ],
     "retreatCost": "3",
@@ -666,7 +688,8 @@
           "Water",
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "prevent_damage_next_turn"
       }
     ],
     "retreatCost": "1",
@@ -691,7 +714,8 @@
         "damage": "10x",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "bonus_per_bench_element(per=10, element=Lightning)"
       }
     ],
     "retreatCost": "1",
@@ -718,7 +742,8 @@
           "Lightning",
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "splash_bench_opponent(amount=20)"
       }
     ],
     "retreatCost": "2",
@@ -744,7 +769,8 @@
         "cost": [
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=40)"
       },
       {
         "name": "Thunder Spear",
@@ -753,7 +779,8 @@
         "cost": [
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=40)"
       },
       {
         "name": "Thunder Spear",
@@ -762,7 +789,8 @@
         "cost": [
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=40)"
       },
       {
         "name": "Thunder Spear",
@@ -771,7 +799,8 @@
         "cost": [
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=40)"
       }
     ],
     "retreatCost": "1",
@@ -821,7 +850,8 @@
         "cost": [
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "cant_retreat_next_turn"
       }
     ],
     "retreatCost": "1",
@@ -846,7 +876,8 @@
         "damage": "10",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "apply_paralysis"
       }
     ],
     "retreatCost": "1",
@@ -871,7 +902,8 @@
         "damage": "20",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "reveal_opponent_hand"
       }
     ],
     "retreatCost": "1",
@@ -905,7 +937,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "copy_opponent_attack"
       }
     ],
     "retreatCost": "1",
@@ -930,7 +963,8 @@
         "damage": "10",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "draw_one_card"
       }
     ],
     "retreatCost": "1",
@@ -979,7 +1013,8 @@
         "damage": "10+",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "bonus_per_opponent_bench(per=20)"
       }
     ],
     "retreatCost": "1",
@@ -1004,7 +1039,8 @@
         "damage": "",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "apply_sleep"
       }
     ],
     "retreatCost": "1",
@@ -1029,7 +1065,8 @@
         "damage": "40",
         "cost": [
           "Psychic"
-        ]
+        ],
+        "handler": "heal_self(amount=10)"
       }
     ],
     "retreatCost": "1",
@@ -1055,7 +1092,8 @@
         "cost": [
           "Psychic",
           "Psychic"
-        ]
+        ],
+        "handler": "heal_all_own(amount=20)"
       }
     ],
     "retreatCost": "1",
@@ -1129,7 +1167,8 @@
         "damage": "50",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "coin_flip_nothing"
       }
     ],
     "retreatCost": "1",
@@ -1231,7 +1270,8 @@
           "Fighting",
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "take_less_damage_next_turn(amount=30)"
       }
     ],
     "retreatCost": "3",
@@ -1264,7 +1304,8 @@
     "abilities": [
       {
         "name": "Primeval Law",
-        "effect": "Your opponent can't play any Pokémon from their hand to evolve their Active Pokémon."
+        "effect": "Your opponent can't play any Pokémon from their hand to evolve their Active Pokémon.",
+        "handler": "passive_block_evolution"
       }
     ],
     "evolvesFrom": "Old Amber",
@@ -1287,7 +1328,8 @@
         "cost": [
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_ko_last_turn(bonus=60)"
       }
     ],
     "retreatCost": "1",
@@ -1338,7 +1380,8 @@
         "damage": "",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "search_deck_named_basic(name=koffing)"
       }
     ],
     "retreatCost": "2",
@@ -1364,7 +1407,8 @@
         "cost": [
           "Darkness",
           "Darkness"
-        ]
+        ],
+        "handler": "coin_flip_attack_block_next_turn"
       }
     ],
     "retreatCost": "3",
@@ -1461,7 +1505,8 @@
         "damage": "20",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": "2",
@@ -1487,7 +1532,8 @@
         "cost": [
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_opponent_poisoned(bonus=50)"
       }
     ],
     "retreatCost": "2",
@@ -1521,7 +1567,8 @@
     "abilities": [
       {
         "name": "Rough Skin",
-        "effect": "If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon."
+        "effect": "If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon.",
+        "handler": "passive_retaliate(amount=20)"
       }
     ],
     "evolvesFrom": null,
@@ -1595,7 +1642,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_bench(per=20)"
       }
     ],
     "retreatCost": "1",
@@ -1622,7 +1670,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_opponent_ex(bonus=80)"
       }
     ],
     "retreatCost": "2",
@@ -1647,7 +1696,8 @@
         "damage": "20x",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "flip_until_tails_damage(per=20)"
       }
     ],
     "retreatCost": "1",
@@ -1672,7 +1722,8 @@
         "damage": "",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "shuffle_hand_draw_opponent_count | shuffle_hand_into_deck"
       }
     ],
     "retreatCost": "1",
@@ -1696,7 +1747,8 @@
     "abilities": [
       {
         "name": "Old Amber",
-        "effect": "Play this card as if it were a 40-HP Basic Colorless Pokémon. At any time during your turn, you may discard this card from play. This card can't retreat."
+        "effect": "Play this card as if it were a 40-HP Basic Colorless Pokémon. At any time during your turn, you may discard this card from play. This card can't retreat.",
+        "handler": "passive_ditto_impostor(hp=40)"
       }
     ],
     "evolvesFrom": null,
@@ -1717,7 +1769,8 @@
     "abilities": [
       {
         "name": "Pokémon Flute",
-        "effect": "Put 1 Basic Pokémon from your opponent's discard pile onto your opponent's Bench."
+        "effect": "Put 1 Basic Pokémon from your opponent's discard pile onto your opponent's Bench.",
+        "handler": "place_opponent_basic_from_discard"
       }
     ],
     "evolvesFrom": null,
@@ -1738,7 +1791,8 @@
     "abilities": [
       {
         "name": "Mythical Slab",
-        "effect": "Look at the top card of your deck. If that card is a Psychic Pokémon, put it into your hand. If it is not, put it at the bottom of your deck."
+        "effect": "Look at the top card of your deck. If that card is a Psychic Pokémon, put it into your hand. If it is not, put it at the bottom of your deck.",
+        "handler": "look_top_of_deck(count=1)"
       }
     ],
     "evolvesFrom": null,
@@ -1759,7 +1813,8 @@
     "abilities": [
       {
         "name": "Budding Expeditioner",
-        "effect": "Put your Mew ex in the Active Spot into your hand."
+        "effect": "Put your Mew ex in the Active Spot into your hand.",
+        "handler": "return_active_to_hand_named(names=(mew ex))"
       }
     ],
     "evolvesFrom": null,
@@ -1780,7 +1835,8 @@
     "abilities": [
       {
         "name": "Blue",
-        "effect": "During your opponent's next turn, all of your Pokémon take -10 damage from attacks from your opponent's Pokémon."
+        "effect": "During your opponent's next turn, all of your Pokémon take -10 damage from attacks from your opponent's Pokémon.",
+        "handler": "next_turn_all_damage_reduction(amount=10)"
       }
     ],
     "evolvesFrom": null,
@@ -1801,7 +1857,8 @@
     "abilities": [
       {
         "name": "Leaf",
-        "effect": "During this turn, the Retreat Cost of your Active Pokémon is 2 less."
+        "effect": "During this turn, the Retreat Cost of your Active Pokémon is 2 less.",
+        "handler": "reduce_retreat_cost(amount=2)"
       }
     ],
     "evolvesFrom": null,
@@ -1826,7 +1883,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_energy(per=20)"
       }
     ],
     "retreatCost": "3",
@@ -1861,7 +1919,8 @@
     "abilities": [
       {
         "name": "Jungle Totem",
-        "effect": "Each Grass Energy attached to your Grass Pokémon provides 2 Grass Energy. This effect doesn't stack."
+        "effect": "Each Grass Energy attached to your Grass Pokémon provides 2 Grass Energy. This effect doesn't stack.",
+        "handler": "passive_double_grass_energy"
       }
     ],
     "evolvesFrom": "Servine",
@@ -1883,7 +1942,8 @@
         "damage": "10+",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_opponent_poisoned(bonus=40)"
       }
     ],
     "retreatCost": "1",
@@ -1917,7 +1977,8 @@
     "abilities": [
       {
         "name": "Wash Out",
-        "effect": "As often as you like during your turn, you may move a Water Energy from 1 of your Benched Water Pokémon to your Active Water Pokémon."
+        "effect": "As often as you like during your turn, you may move a Water Energy from 1 of your Benched Water Pokémon to your Active Water Pokémon.",
+        "handler": "move_water_bench_to_active"
       }
     ],
     "evolvesFrom": "Eevee",
@@ -1939,7 +2000,8 @@
         "damage": "10",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "apply_paralysis"
       }
     ],
     "retreatCost": "1",
@@ -1965,7 +2027,8 @@
         "cost": [
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_ko_last_turn(bonus=60)"
       }
     ],
     "retreatCost": "1",
@@ -1991,7 +2054,8 @@
         "cost": [
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_per_energy_damage(per=50)"
       }
     ],
     "retreatCost": "1",
@@ -2019,7 +2083,8 @@
           "Water",
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_random_energy_all_pokemon"
       }
     ],
     "retreatCost": "3",
@@ -2053,7 +2118,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "copy_opponent_attack"
       }
     ],
     "retreatCost": "1",
@@ -2086,7 +2152,8 @@
     "abilities": [
       {
         "name": "Primeval Law",
-        "effect": "Your opponent can't play any Pokémon from their hand to evolve their Active Pokémon."
+        "effect": "Your opponent can't play any Pokémon from their hand to evolve their Active Pokémon.",
+        "handler": "passive_block_evolution"
       }
     ],
     "evolvesFrom": "Old Amber",
@@ -2110,7 +2177,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_bench(per=20)"
       }
     ],
     "retreatCost": "1",
@@ -2134,7 +2202,8 @@
     "abilities": [
       {
         "name": "Budding Expeditioner",
-        "effect": "Put your Mew ex in the Active Spot into your hand."
+        "effect": "Put your Mew ex in the Active Spot into your hand.",
+        "handler": "return_active_to_hand_named(names=(mew ex))"
       }
     ],
     "evolvesFrom": null,
@@ -2155,7 +2224,8 @@
     "abilities": [
       {
         "name": "Blue",
-        "effect": "During your opponent's next turn, all of your Pokémon take -10 damage from attacks from your opponent's Pokémon."
+        "effect": "During your opponent's next turn, all of your Pokémon take -10 damage from attacks from your opponent's Pokémon.",
+        "handler": "next_turn_all_damage_reduction(amount=10)"
       }
     ],
     "evolvesFrom": null,
@@ -2176,7 +2246,8 @@
     "abilities": [
       {
         "name": "Leaf",
-        "effect": "During this turn, the Retreat Cost of your Active Pokémon is 2 less."
+        "effect": "During this turn, the Retreat Cost of your Active Pokémon is 2 less.",
+        "handler": "reduce_retreat_cost(amount=2)"
       }
     ],
     "evolvesFrom": null,
@@ -2207,7 +2278,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "copy_opponent_attack"
       }
     ],
     "retreatCost": "1",
@@ -2240,7 +2312,8 @@
     "abilities": [
       {
         "name": "Primeval Law",
-        "effect": "Your opponent can't play any Pokémon from their hand to evolve their Active Pokémon."
+        "effect": "Your opponent can't play any Pokémon from their hand to evolve their Active Pokémon.",
+        "handler": "passive_block_evolution"
       }
     ],
     "evolvesFrom": "Old Amber",
@@ -2263,7 +2336,8 @@
         "cost": [
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_per_energy_damage(per=50)"
       }
     ],
     "retreatCost": "1",
@@ -2297,7 +2371,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "copy_opponent_attack"
       }
     ],
     "retreatCost": "1",

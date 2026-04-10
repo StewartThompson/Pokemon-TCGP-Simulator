@@ -83,6 +83,127 @@ def play(deck, opponent, seed):
 
 
 @cli.command()
+@click.option("--games", default=50, type=int, help="Number of games to profile (default: 50)")
+@click.option("--deck1", default="grass", help="Deck for player 1")
+@click.option("--deck2", default="fire", help="Deck for player 2")
+@click.option("--agent1", default="heuristic", type=click.Choice(["random", "heuristic"]))
+@click.option("--agent2", default="heuristic", type=click.Choice(["random", "heuristic"]))
+@click.option("--seed", default=42, type=int, help="Base random seed")
+@click.option("--top", default=30, type=int, help="Number of top functions to show (default: 30)")
+@click.option("--sort", default="cumulative",
+              type=click.Choice(["cumulative", "tottime", "calls"]),
+              help="Sort column (default: cumulative)")
+@click.option("--output", default=None, type=str,
+              help="Save raw .prof file to this path (open with snakeviz or py-spy)")
+def profile(games, deck1, deck2, agent1, agent2, seed, top, sort, output):
+    """Profile N single-process games and show the top hottest functions.
+
+    Runs in a single worker (no multiprocessing) so cProfile sees the full
+    call stack. Use this before and after optimizations to measure impact.
+
+    Examples:
+        ptcgp profile --games 50
+        ptcgp profile --games 100 --sort tottime --top 20
+        ptcgp profile --games 50 --output profile.prof  # then: snakeviz profile.prof
+    """
+    import cProfile
+    import io
+    import pstats
+    import time
+    import ptcgp.effects  # noqa: F401 — registers all effect handlers
+    from ptcgp.cards.database import load_defaults
+    from ptcgp.ui.theme import console
+
+    load_defaults()
+
+    from ptcgp.agents.heuristic import HeuristicAgent
+    from ptcgp.agents.random_agent import RandomAgent
+    from ptcgp.decks.sample_decks import get_sample_deck
+    from ptcgp.runner.game_runner import run_game
+
+    deck1_ids, energy1 = get_sample_deck(deck1)
+    deck2_ids, energy2 = get_sample_deck(deck2)
+
+    def _make_agent(agent_type: str):
+        return HeuristicAgent() if agent_type == "heuristic" else RandomAgent()
+
+    console.print(
+        f"[bold]Profiling {games} games[/bold] "
+        f"({deck1}/{agent1} vs {deck2}/{agent2}) "
+        f"[dim]seed={seed}, in-process (no multiprocessing)[/dim]"
+    )
+
+    # Run games directly in-process so cProfile captures the full call stack.
+    wins = [0, 0]
+    pr = cProfile.Profile()
+    t0 = time.perf_counter()
+    pr.enable()
+
+    for i in range(games):
+        a1 = _make_agent(agent1)
+        a2 = _make_agent(agent2)
+        _, winner = run_game(
+            a1, a2,
+            list(deck1_ids), list(deck2_ids),
+            list(energy1), list(energy2),
+            seed=seed + i,
+        )
+        if winner == 0:
+            wins[0] += 1
+        elif winner == 1:
+            wins[1] += 1
+
+    pr.disable()
+    elapsed = time.perf_counter() - t0
+
+    games_per_sec = games / elapsed if elapsed > 0 else 0
+    ms_per_game = elapsed * 1000 / games if games > 0 else 0
+
+    completed = wins[0] + wins[1]
+    p1_rate = wins[0] / completed if completed else 0.0
+    p2_rate = wins[1] / completed if completed else 0.0
+    console.print(
+        f"\n[bold]Results:[/bold] "
+        f"P1 {wins[0]} wins ({p1_rate * 100:.1f}%)  |  "
+        f"P2 {wins[1]} wins ({p2_rate * 100:.1f}%)"
+    )
+    console.print(
+        f"[bold]Timing:[/bold] {elapsed:.2f}s total  |  "
+        f"[bold]{games_per_sec:.1f} games/sec[/bold]  |  "
+        f"{ms_per_game:.1f} ms/game"
+    )
+
+    if output:
+        pr.dump_stats(output)
+        console.print(f"[dim]Raw profile saved to {output!r} — open with: snakeviz {output}[/dim]")
+
+    # Print top-N functions using pstats
+    buf = io.StringIO()
+    ps = pstats.Stats(pr, stream=buf)
+    ps.strip_dirs()
+    ps.sort_stats(sort)
+    ps.print_stats(top)
+
+    raw = buf.getvalue()
+
+    # Pretty-print via Rich — highlight the table lines
+    console.print(f"\n[bold]Top {top} functions by [cyan]{sort}[/cyan] time:[/bold]")
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        # Header line (ncalls / tottime / ...)
+        if "ncalls" in line:
+            console.print(f"[bold dim]{line}[/bold dim]")
+        # Function lines — highlight our own code in yellow
+        elif "ptcgp" in line:
+            console.print(f"[yellow]{line}[/yellow]")
+        elif line.startswith("   "):
+            console.print(f"[dim]{line}[/dim]")
+        else:
+            console.print(line)
+
+
+@cli.command()
 @click.option("--games", default=100, type=int, help="Number of games to simulate")
 @click.option("--deck1", default="grass", help="Deck for player 1")
 @click.option("--deck2", default="fire", help="Deck for player 2")

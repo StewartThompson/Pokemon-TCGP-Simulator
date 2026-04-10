@@ -27,6 +27,8 @@ class Card:
 
     # --- Trainer-only fields ---
     trainer_effect_text: str = ""
+    trainer_handler: str = ""  # e.g. "draw_cards(count=2)" — direct dispatch
+    cached_trainer_effects: tuple = field(default_factory=tuple)  # pre-parsed at load time
 
     # --- Properties ---
 

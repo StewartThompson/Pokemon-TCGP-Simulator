@@ -17,7 +17,8 @@
           "Grass",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "both_coins_bonus(amount=70)"
       }
     ],
     "retreatCost": 2,
@@ -117,7 +118,8 @@
           "Grass",
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "self_damage(amount=30)"
       }
     ],
     "retreatCost": 2,
@@ -166,7 +168,8 @@
         "damage": "40",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "apply_confusion"
       }
     ],
     "retreatCost": 1,
@@ -192,7 +195,8 @@
         "cost": [
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "heal_self(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -224,7 +228,8 @@
     "abilities": [
       {
         "name": "Power Link",
-        "effect": "If you have Arceus or Arceus ex in play, attacks used by this Pokémon do +30 damage to your opponent's Active Pokémon."
+        "effect": "If you have Arceus or Arceus ex in play, attacks used by this Pokémon do +30 damage to your opponent's Active Pokémon.",
+        "handler": "bonus_if_named_in_play(bonus=30, names=(Arceus, Arceus ex))"
       }
     ],
     "evolvesFrom": null,
@@ -255,7 +260,8 @@
     "abilities": [
       {
         "name": "Forest Breath",
-        "effect": "Once during your turn, if this Pokémon is in the Active Spot, you may take a Grass Energy from your Energy Zone and attach it to 1 of your Grass Pokémon."
+        "effect": "Once during your turn, if this Pokémon is in the Active Spot, you may take a Grass Energy from your Energy Zone and attach it to 1 of your Grass Pokémon.",
+        "handler": "attach_energy_zone_to_grass"
       }
     ],
     "evolvesFrom": "Eevee",
@@ -302,7 +308,8 @@
         "cost": [
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "cant_retreat_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -328,7 +335,8 @@
         "cost": [
           "Fire",
           "Fire"
-        ]
+        ],
+        "handler": "bonus_if_self_damaged(bonus=40)"
       }
     ],
     "retreatCost": 3,
@@ -336,7 +344,8 @@
     "abilities": [
       {
         "name": "Speed Link",
-        "effect": "If you have Arceus or Arceus ex in play, this Pokémon has no Retreat Cost."
+        "effect": "If you have Arceus or Arceus ex in play, this Pokémon has no Retreat Cost.",
+        "handler": "passive_arceus_no_retreat"
       }
     ],
     "evolvesFrom": null,
@@ -435,7 +444,8 @@
           "Water",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_bonus_or_self_damage(bonus=60, self_damage=20)"
       }
     ],
     "retreatCost": 3,
@@ -485,7 +495,8 @@
         "cost": [
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "splash_bench_opponent(amount=10)"
       }
     ],
     "retreatCost": 1,
@@ -544,7 +555,8 @@
     "abilities": [
       {
         "name": "Vigor Link",
-        "effect": "If you have Arceus or Arceus ex in play, attacks used by this Pokémon cost 1 less Colorless Energy."
+        "effect": "If you have Arceus or Arceus ex in play, attacks used by this Pokémon cost 1 less Colorless Energy.",
+        "handler": "passive_arceus_cost_reduction"
       }
     ],
     "evolvesFrom": "Snover",
@@ -575,7 +587,8 @@
     "abilities": [
       {
         "name": "Snowy Terrain",
-        "effect": "During Pokémon Checkup, if this Pokémon is in the Active Spot, do 10 damage to your opponent's Active Pokémon."
+        "effect": "During Pokémon Checkup, if this Pokémon is in the Active Spot, do 10 damage to your opponent's Active Pokémon.",
+        "handler": "passive_checkup_damage(amount=10)"
       }
     ],
     "evolvesFrom": "Eevee",
@@ -599,7 +612,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=60)"
       }
     ],
     "retreatCost": 2,
@@ -625,7 +639,8 @@
         "cost": [
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "apply_sleep"
       }
     ],
     "retreatCost": 1,
@@ -650,7 +665,8 @@
         "damage": "10",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=10)"
       }
     ],
     "retreatCost": 1,
@@ -676,7 +692,8 @@
         "cost": [
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -684,7 +701,8 @@
     "abilities": [
       {
         "name": "Resilience Link",
-        "effect": "If you have Arceus or Arceus ex in play, this Pokémon takes −30 damage from attacks."
+        "effect": "If you have Arceus or Arceus ex in play, this Pokémon takes −30 damage from attacks.",
+        "handler": "passive_damage_reduction(amount=30)"
       }
     ],
     "evolvesFrom": "Pikachu",
@@ -730,7 +748,8 @@
         "damage": "40",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "coin_flip_attack_block_next_turn"
       }
     ],
     "retreatCost": 1,
@@ -782,7 +801,8 @@
           "Psychic",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "defender_attacks_do_less_damage(amount=30)"
       }
     ],
     "retreatCost": 2,
@@ -807,7 +827,8 @@
         "damage": "0",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_shuffle_opponent_card"
       }
     ],
     "retreatCost": 1,
@@ -858,7 +879,8 @@
         "cost": [
           "Psychic",
           "Psychic"
-        ]
+        ],
+        "handler": "apply_sleep"
       }
     ],
     "retreatCost": 1,
@@ -890,7 +912,8 @@
     "abilities": [
       {
         "name": "CHECK",
-        "effect": "Once during your turn, you may choose either player. Look at the top card of that player's deck."
+        "effect": "Once during your turn, you may choose either player. Look at the top card of that player's deck.",
+        "handler": "look_top_of_deck(count=1)"
       }
     ],
     "evolvesFrom": null,
@@ -912,7 +935,8 @@
         "damage": "0",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -920,7 +944,8 @@
     "abilities": [
       {
         "name": "Speed Link",
-        "effect": "If you have Arceus or Arceus ex in play, this Pokémon has no Retreat Cost."
+        "effect": "If you have Arceus or Arceus ex in play, this Pokémon has no Retreat Cost.",
+        "handler": "passive_arceus_no_retreat"
       }
     ],
     "evolvesFrom": null,
@@ -942,7 +967,8 @@
         "damage": "20+",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "bonus_if_opponent_ex(bonus=30)"
       }
     ],
     "retreatCost": 2,
@@ -993,7 +1019,8 @@
           "Fighting",
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "self_attack_buff_next_turn(attack_name=rolling spin, amount=60)"
       }
     ],
     "retreatCost": 3,
@@ -1079,7 +1106,8 @@
     "abilities": [
       {
         "name": "Power Link",
-        "effect": "If you have Arceus or Arceus ex in play, attacks used by this Pokémon do +30 damage to your opponent's Active Pokémon."
+        "effect": "If you have Arceus or Arceus ex in play, attacks used by this Pokémon do +30 damage to your opponent's Active Pokémon.",
+        "handler": "bonus_if_named_in_play(bonus=30, names=(Arceus, Arceus ex))"
       }
     ],
     "evolvesFrom": "Pupitar",
@@ -1149,7 +1177,8 @@
         "damage": "80",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "coin_flip_nothing"
       }
     ],
     "retreatCost": 1,
@@ -1222,7 +1251,8 @@
         "damage": "0",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=50)"
       },
       {
         "name": "Dragon Claw",
@@ -1311,7 +1341,8 @@
     "abilities": [
       {
         "name": "Cunning Link",
-        "effect": "Once during your turn, if you have Arceus or Arceus ex in play, you may do 30 damage to your opponent's Active Pokémon."
+        "effect": "Once during your turn, if you have Arceus or Arceus ex in play, you may do 30 damage to your opponent's Active Pokémon.",
+        "handler": "bench_hit_opponent(amount=30)"
       }
     ],
     "evolvesFrom": "Golbat",
@@ -1357,7 +1388,8 @@
         "damage": "0",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": 1,
@@ -1440,7 +1472,8 @@
     "abilities": [
       {
         "name": "Resilience Link",
-        "effect": "If you have Arceus or Arceus ex in play, this Pokémon takes −30 damage from attacks."
+        "effect": "If you have Arceus or Arceus ex in play, this Pokémon takes −30 damage from attacks.",
+        "handler": "passive_damage_reduction(amount=30)"
       }
     ],
     "evolvesFrom": "Magneton",
@@ -1462,7 +1495,8 @@
         "damage": "20+",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_opponent_element(bonus=30, element=m)"
       }
     ],
     "retreatCost": 1,
@@ -1489,7 +1523,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "take_less_damage_next_turn(amount=20)"
       }
     ],
     "retreatCost": 3,
@@ -1540,7 +1575,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_energy(per=20)"
       }
     ],
     "retreatCost": 3,
@@ -1567,7 +1603,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "self_cant_attack_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -1594,7 +1631,8 @@
           "Grass",
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_n_energy_self(count=2, energy_type=Random)"
       }
     ],
     "retreatCost": 3,
@@ -1647,7 +1685,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "self_sleep"
       }
     ],
     "retreatCost": 4,
@@ -1697,7 +1736,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "reveal_opponent_hand"
       }
     ],
     "retreatCost": 1,
@@ -1772,7 +1812,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -1805,7 +1846,8 @@
     "abilities": [
       {
         "name": "Sky Support",
-        "effect": "As long as this Pokémon is on your Bench, your Active Basic Pokemon's Retreat Cost is 1 less."
+        "effect": "As long as this Pokémon is on your Bench, your Active Basic Pokemon's Retreat Cost is 1 less.",
+        "handler": "passive_bench_retreat_reduction"
       }
     ],
     "evolvesFrom": null,
@@ -1830,7 +1872,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Random)"
       }
     ],
     "retreatCost": 2,
@@ -1857,7 +1900,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_bench_named(per=20, name=pokémon)"
       }
     ],
     "retreatCost": 2,
@@ -1865,7 +1909,8 @@
     "abilities": [
       {
         "name": "Fabled Luster",
-        "effect": "This Pokémon can't be affected by any Special Conditions."
+        "effect": "This Pokémon can't be affected by any Special Conditions.",
+        "handler": "passive_immune_status"
       }
     ],
     "evolvesFrom": null,
@@ -1886,7 +1931,8 @@
     "abilities": [
       {
         "name": "Irida",
-        "effect": "Heal 40 damage from each of your Pokémon that has any Water Energy attached."
+        "effect": "Heal 40 damage from each of your Pokémon that has any Water Energy attached.",
+        "handler": "heal_all_own(amount=40)"
       }
     ],
     "evolvesFrom": null,
@@ -1907,7 +1953,8 @@
     "abilities": [
       {
         "name": "Celestic Town Elder",
-        "effect": "Put 1 random Basic Pokémon from your discard pile into your hand."
+        "effect": "Put 1 random Basic Pokémon from your discard pile into your hand.",
+        "handler": "search_discard_random_basic"
       }
     ],
     "evolvesFrom": null,
@@ -1928,7 +1975,8 @@
     "abilities": [
       {
         "name": "Barry",
-        "effect": "During this turn, attacks used by your Snorlax, Heracross, and Staraptor cost 2 less Energy."
+        "effect": "During this turn, attacks used by your Snorlax, Heracross, and Staraptor cost 2 less Energy.",
+        "handler": "reduce_attack_cost_named(names=(snorlax, heracross, staraptor), amount=2)"
       }
     ],
     "evolvesFrom": null,
@@ -1949,7 +1997,8 @@
     "abilities": [
       {
         "name": "Adaman",
-        "effect": "During your opponent's next turn, all of your Metal Pokémon take -20 damage from attacks from your opponent's Pokémon."
+        "effect": "During your opponent's next turn, all of your Metal Pokémon take -20 damage from attacks from your opponent's Pokémon.",
+        "handler": "next_turn_metal_damage_reduction(amount=20)"
       }
     ],
     "evolvesFrom": null,
@@ -1972,7 +2021,8 @@
         "cost": [
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "cant_retreat_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -2028,7 +2078,8 @@
     "abilities": [
       {
         "name": "CHECK",
-        "effect": "Once during your turn, you may choose either player. Look at the top card of that player's deck."
+        "effect": "Once during your turn, you may choose either player. Look at the top card of that player's deck.",
+        "handler": "look_top_of_deck(count=1)"
       }
     ],
     "evolvesFrom": null,
@@ -2050,7 +2101,8 @@
         "damage": "20+",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "bonus_if_opponent_ex(bonus=30)"
       }
     ],
     "retreatCost": 2,
@@ -2107,7 +2159,8 @@
     "abilities": [
       {
         "name": "Sky Support",
-        "effect": "As long as this Pokémon is on your Bench, your Active Basic Pokemon's Retreat Cost is 1 less."
+        "effect": "As long as this Pokémon is on your Bench, your Active Basic Pokemon's Retreat Cost is 1 less.",
+        "handler": "passive_bench_retreat_reduction"
       }
     ],
     "evolvesFrom": null,
@@ -2138,7 +2191,8 @@
     "abilities": [
       {
         "name": "Forest Breath",
-        "effect": "Once during your turn, if this Pokémon is in the Active Spot, you may take a Grass Energy from your Energy Zone and attach it to 1 of your Grass Pokémon."
+        "effect": "Once during your turn, if this Pokémon is in the Active Spot, you may take a Grass Energy from your Energy Zone and attach it to 1 of your Grass Pokémon.",
+        "handler": "attach_energy_zone_to_grass"
       }
     ],
     "evolvesFrom": "Eevee",
@@ -2169,7 +2223,8 @@
     "abilities": [
       {
         "name": "Snowy Terrain",
-        "effect": "During Pokémon Checkup, if this Pokémon is in the Active Spot, do 10 damage to your opponent's Active Pokémon."
+        "effect": "During Pokémon Checkup, if this Pokémon is in the Active Spot, do 10 damage to your opponent's Active Pokémon.",
+        "handler": "passive_checkup_damage(amount=10)"
       }
     ],
     "evolvesFrom": "Eevee",
@@ -2191,7 +2246,8 @@
         "damage": "0",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=50)"
       },
       {
         "name": "Dragon Claw",
@@ -2227,7 +2283,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "take_less_damage_next_turn(amount=20)"
       }
     ],
     "retreatCost": 3,
@@ -2254,7 +2311,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_bench_named(per=20, name=pokémon)"
       }
     ],
     "retreatCost": 2,
@@ -2262,7 +2320,8 @@
     "abilities": [
       {
         "name": "Fabled Luster",
-        "effect": "This Pokémon can't be affected by any Special Conditions."
+        "effect": "This Pokémon can't be affected by any Special Conditions.",
+        "handler": "passive_immune_status"
       }
     ],
     "evolvesFrom": null,
@@ -2283,7 +2342,8 @@
     "abilities": [
       {
         "name": "Irida",
-        "effect": "Heal 40 damage from each of your Pokémon that has any Water Energy attached."
+        "effect": "Heal 40 damage from each of your Pokémon that has any Water Energy attached.",
+        "handler": "heal_all_own(amount=40)"
       }
     ],
     "evolvesFrom": null,
@@ -2304,7 +2364,8 @@
     "abilities": [
       {
         "name": "Celestic Town Elder",
-        "effect": "Put 1 random Basic Pokémon from your discard pile into your hand."
+        "effect": "Put 1 random Basic Pokémon from your discard pile into your hand.",
+        "handler": "search_discard_random_basic"
       }
     ],
     "evolvesFrom": null,
@@ -2325,7 +2386,8 @@
     "abilities": [
       {
         "name": "Barry",
-        "effect": "During this turn, attacks used by your Snorlax, Heracross, and Staraptor cost 2 less Energy."
+        "effect": "During this turn, attacks used by your Snorlax, Heracross, and Staraptor cost 2 less Energy.",
+        "handler": "reduce_attack_cost_named(names=(snorlax, heracross, staraptor), amount=2)"
       }
     ],
     "evolvesFrom": null,
@@ -2346,7 +2408,8 @@
     "abilities": [
       {
         "name": "Adaman",
-        "effect": "During your opponent's next turn, all of your Metal Pokémon take -20 damage from attacks from your opponent's Pokémon."
+        "effect": "During your opponent's next turn, all of your Metal Pokémon take -20 damage from attacks from your opponent's Pokémon.",
+        "handler": "next_turn_metal_damage_reduction(amount=20)"
       }
     ],
     "evolvesFrom": null,
@@ -2377,7 +2440,8 @@
     "abilities": [
       {
         "name": "Forest Breath",
-        "effect": "Once during your turn, if this Pokémon is in the Active Spot, you may take a Grass Energy from your Energy Zone and attach it to 1 of your Grass Pokémon."
+        "effect": "Once during your turn, if this Pokémon is in the Active Spot, you may take a Grass Energy from your Energy Zone and attach it to 1 of your Grass Pokémon.",
+        "handler": "attach_energy_zone_to_grass"
       }
     ],
     "evolvesFrom": "Eevee",
@@ -2408,7 +2472,8 @@
     "abilities": [
       {
         "name": "Snowy Terrain",
-        "effect": "During Pokémon Checkup, if this Pokémon is in the Active Spot, do 10 damage to your opponent's Active Pokémon."
+        "effect": "During Pokémon Checkup, if this Pokémon is in the Active Spot, do 10 damage to your opponent's Active Pokémon.",
+        "handler": "passive_checkup_damage(amount=10)"
       }
     ],
     "evolvesFrom": "Eevee",
@@ -2430,7 +2495,8 @@
         "damage": "0",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=50)"
       },
       {
         "name": "Dragon Claw",
@@ -2466,7 +2532,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "take_less_damage_next_turn(amount=20)"
       }
     ],
     "retreatCost": 3,
@@ -2493,7 +2560,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_bench_named(per=20, name=pokémon)"
       }
     ],
     "retreatCost": 2,
@@ -2501,7 +2569,8 @@
     "abilities": [
       {
         "name": "Fabled Luster",
-        "effect": "This Pokémon can't be affected by any Special Conditions."
+        "effect": "This Pokémon can't be affected by any Special Conditions.",
+        "handler": "passive_immune_status"
       }
     ],
     "evolvesFrom": null,
@@ -2525,7 +2594,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_bench_named(per=20, name=pokémon)"
       }
     ],
     "retreatCost": 2,
@@ -2533,7 +2603,8 @@
     "abilities": [
       {
         "name": "Fabled Luster",
-        "effect": "This Pokémon can't be affected by any Special Conditions."
+        "effect": "This Pokémon can't be affected by any Special Conditions.",
+        "handler": "passive_immune_status"
       }
     ],
     "evolvesFrom": null,

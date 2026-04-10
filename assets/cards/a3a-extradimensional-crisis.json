@@ -64,7 +64,8 @@
         "damage": "10x",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=3, per=10)"
       }
     ],
     "retreatCost": 1,
@@ -89,7 +90,8 @@
         "damage": "0",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -115,7 +117,8 @@
         "cost": [
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=70)"
       }
     ],
     "retreatCost": 2,
@@ -150,7 +153,8 @@
           "Grass",
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "self_cant_use_specific_attack(attack_name=big beat)"
       }
     ],
     "retreatCost": 2,
@@ -175,7 +179,8 @@
         "damage": "20",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -226,7 +231,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=70)"
       }
     ],
     "retreatCost": 2,
@@ -301,7 +307,8 @@
         "cost": [
           "Water",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_discard_random_energy_opponent"
       }
     ],
     "retreatCost": 1,
@@ -384,7 +391,8 @@
     "abilities": [
       {
         "name": "Intimidating Fang",
-        "effect": "As long as this Pokémon is in the Active Spot, attacks used by your opponent's Active Pokémon do −20 damage."
+        "effect": "As long as this Pokémon is in the Active Spot, attacks used by your opponent's Active Pokémon do −20 damage.",
+        "handler": "passive_opponent_damage_reduction(amount=20)"
       }
     ],
     "evolvesFrom": "Luxio",
@@ -480,7 +488,8 @@
         "damage": "20",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "attach_energy_zone_self_bracket(energy_type=l)"
       },
       {
         "name": "Mach Bolt",
@@ -516,7 +525,8 @@
           "Lightning",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_confusion"
       }
     ],
     "retreatCost": 2,
@@ -549,7 +559,8 @@
     "abilities": [
       {
         "name": "Thunderclap Flash",
-        "effect": "At the end of your first turn, take a [L] Energy from your Energy Zone and attach it to this Pokémon."
+        "effect": "At the end of your first turn, take a [L] Energy from your Energy Zone and attach it to this Pokémon.",
+        "handler": "attach_energy_zone_self_bracket(energy_type=l)"
       }
     ],
     "evolvesFrom": null,
@@ -703,7 +714,8 @@
     "abilities": [
       {
         "name": "Illuminate",
-        "effect": "Once during your turn, you may put a random Pokémon from your deck into your hand."
+        "effect": "Once during your turn, you may put a random Pokémon from your deck into your hand.",
+        "handler": "search_deck_random_pokemon"
       }
     ],
     "evolvesFrom": "Morelull",
@@ -725,7 +737,8 @@
         "damage": "10+",
         "cost": [
           "Fighting"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -808,7 +821,8 @@
     "abilities": [
       {
         "name": "Heal Block",
-        "effect": "Pokémon (both yours and your opponent's) can't be healed."
+        "effect": "Pokémon (both yours and your opponent's) can't be healed.",
+        "handler": "passive_no_healing"
       }
     ],
     "evolvesFrom": "Baltoy",
@@ -857,7 +871,8 @@
           "Fighting",
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Fighting)"
       }
     ],
     "retreatCost": 2,
@@ -883,7 +898,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bonus_per_bench_named(per=40, name=Passimian)"
       }
     ],
     "retreatCost": 1,
@@ -936,7 +952,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "cant_retreat_next_turn"
       }
     ],
     "retreatCost": 3,
@@ -961,7 +978,8 @@
         "damage": "0",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "discard_random_tool_from_hand"
       }
     ],
     "retreatCost": 1,
@@ -987,7 +1005,8 @@
         "cost": [
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_paralysis"
       }
     ],
     "retreatCost": 1,
@@ -1063,7 +1082,8 @@
           "Darkness",
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_shuffle_opponent_cards(count=3)"
       }
     ],
     "retreatCost": 3,
@@ -1089,7 +1109,8 @@
         "cost": [
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": 1,
@@ -1097,7 +1118,8 @@
     "abilities": [
       {
         "name": "More Poison",
-        "effect": "Your opponent's Active Pokémon takes +10 damage from being Poisoned."
+        "effect": "Your opponent's Active Pokémon takes +10 damage from being Poisoned.",
+        "handler": "toxic_poison"
       }
     ],
     "evolvesFrom": null,
@@ -1120,7 +1142,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_random_energy_opponent"
       },
       {
         "name": "Tyrannical Hole",
@@ -1155,7 +1178,8 @@
         "damage": "20x",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=2, per=20)"
       }
     ],
     "retreatCost": 1,
@@ -1180,7 +1204,8 @@
         "damage": "40",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": 2,
@@ -1205,7 +1230,8 @@
         "damage": "40",
         "cost": [
           "Metal"
-        ]
+        ],
+        "handler": "coin_flip_nothing"
       }
     ],
     "retreatCost": 1,
@@ -1231,7 +1257,8 @@
         "cost": [
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=3, per=60)"
       }
     ],
     "retreatCost": 1,
@@ -1310,7 +1337,8 @@
           "Metal",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "self_cant_attack_next_turn"
       }
     ],
     "retreatCost": 4,
@@ -1369,7 +1397,8 @@
     "abilities": [
       {
         "name": "Steel Spikes",
-        "effect": "If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon."
+        "effect": "If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon.",
+        "handler": "passive_retaliate(amount=20)"
       }
     ],
     "evolvesFrom": "Ferroseed",
@@ -1392,7 +1421,8 @@
         "cost": [
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "take_less_damage_next_turn(amount=20)"
       }
     ],
     "retreatCost": 3,
@@ -1473,7 +1503,8 @@
     "abilities": [
       {
         "name": "Guard Dog Visage",
-        "effect": "As long as this Pokémon is in the Active Spot, attacks used by your opponent's Active Pokémon cost 1 Colorless more."
+        "effect": "As long as this Pokémon is in the Active Spot, attacks used by your opponent's Active Pokémon cost 1 Colorless more.",
+        "handler": "passive_opponent_attack_cost_increase"
       }
     ],
     "evolvesFrom": "Herdier",
@@ -1522,7 +1553,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "double_heads_instant_ko"
       }
     ],
     "retreatCost": 3,
@@ -1573,7 +1605,8 @@
         "damage": "20+",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -1599,7 +1632,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_played_supporter(bonus=50)"
       }
     ],
     "retreatCost": 1,
@@ -1626,7 +1660,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_nothing"
       }
     ],
     "retreatCost": 4,
@@ -1634,7 +1669,8 @@
     "abilities": [
       {
         "name": "Ultra Thrusters",
-        "effect": "Once during your turn, you may switch your Active Ultra Beast with 1 of your Benched Ultra Beasts."
+        "effect": "Once during your turn, you may switch your Active Ultra Beast with 1 of your Benched Ultra Beasts.",
+        "handler": "switch_ultra_beast"
       }
     ],
     "evolvesFrom": null,
@@ -1655,7 +1691,8 @@
     "abilities": [
       {
         "name": "Beast Wall",
-        "effect": "You can use this card only if your opponent hasn't gotten any points. During your opponent's next turn, all of your Ultra Beasts take -20 damage from your opponent's Pokémon."
+        "effect": "You can use this card only if your opponent hasn't gotten any points. During your opponent's next turn, all of your Ultra Beasts take -20 damage from your opponent's Pokémon.",
+        "handler": "beast_wall_protection"
       }
     ],
     "evolvesFrom": null,
@@ -1676,7 +1713,8 @@
     "abilities": [
       {
         "name": "Repel",
-        "effect": "Switch out your opponent's Active Basic Pokémon to the Bench. Your opponent chooses the new Active Pokémon."
+        "effect": "Switch out your opponent's Active Basic Pokémon to the Bench. Your opponent chooses the new Active Pokémon.",
+        "handler": "switch_opponent_basic_to_active"
       }
     ],
     "evolvesFrom": null,
@@ -1697,7 +1735,8 @@
     "abilities": [
       {
         "name": "Electrical Cord",
-        "effect": "If the Lightning Pokémon this card is attached to is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, move 2 Lightning Energy from that Pokémon and attach 1 Energy each to 2 of your Benched Pokémon."
+        "effect": "If the Lightning Pokémon this card is attached to is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, move 2 Lightning Energy from that Pokémon and attach 1 Energy each to 2 of your Benched Pokémon.",
+        "handler": "passive_electrical_cord"
       }
     ],
     "evolvesFrom": null,
@@ -1718,7 +1757,8 @@
     "abilities": [
       {
         "name": "Beastite",
-        "effect": "Attacks used by the Ultra Beast this card is attached to do +10 damage to your opponent's Active Pokémon for each point you have gotten."
+        "effect": "Attacks used by the Ultra Beast this card is attached to do +10 damage to your opponent's Active Pokémon for each point you have gotten.",
+        "handler": "passive_beastite_damage"
       }
     ],
     "evolvesFrom": null,
@@ -1739,7 +1779,8 @@
     "abilities": [
       {
         "name": "Gladion",
-        "effect": "Put 1 random Type: Null or Silvally from your deck into your hand."
+        "effect": "Put 1 random Type: Null or Silvally from your deck into your hand.",
+        "handler": "search_deck_named(names=(Type: Null, Silvally))"
       }
     ],
     "evolvesFrom": null,
@@ -1760,7 +1801,8 @@
     "abilities": [
       {
         "name": "Looker",
-        "effect": "Your opponent reveals all of the Supporter cards in their deck."
+        "effect": "Your opponent reveals all of the Supporter cards in their deck.",
+        "handler": "reveal_opponent_supporters"
       }
     ],
     "evolvesFrom": null,
@@ -1781,7 +1823,8 @@
     "abilities": [
       {
         "name": "Lusamine",
-        "effect": "You can use this card only if your opponent has gotten at least 1 point. Choose 1 of your Ultra Beasts. Attach 2 random Energy from your discard pile to that Pokémon."
+        "effect": "You can use this card only if your opponent has gotten at least 1 point. Choose 1 of your Ultra Beasts. Attach 2 random Energy from your discard pile to that Pokémon.",
+        "handler": "lusamine_attach"
       }
     ],
     "evolvesFrom": null,
@@ -1803,7 +1846,8 @@
         "damage": "10x",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=3, per=10)"
       }
     ],
     "retreatCost": 1,
@@ -1828,7 +1872,8 @@
         "damage": "20",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -1855,7 +1900,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=70)"
       }
     ],
     "retreatCost": 2,
@@ -1880,7 +1926,8 @@
         "damage": "0",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "discard_random_tool_from_hand"
       }
     ],
     "retreatCost": 1,
@@ -1906,7 +1953,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_if_played_supporter(bonus=50)"
       }
     ],
     "retreatCost": 1,
@@ -1933,7 +1981,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_nothing"
       }
     ],
     "retreatCost": 4,
@@ -1941,7 +1990,8 @@
     "abilities": [
       {
         "name": "Ultra Thrusters",
-        "effect": "Once during your turn, you may switch your Active Ultra Beast with 1 of your Benched Ultra Beasts."
+        "effect": "Once during your turn, you may switch your Active Ultra Beast with 1 of your Benched Ultra Beasts.",
+        "handler": "switch_ultra_beast"
       }
     ],
     "evolvesFrom": null,
@@ -1973,7 +2023,8 @@
           "Grass",
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "self_cant_use_specific_attack(attack_name=big beat)"
       }
     ],
     "retreatCost": 2,
@@ -1998,7 +2049,8 @@
         "damage": "20",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "attach_energy_zone_self_bracket(energy_type=l)"
       },
       {
         "name": "Mach Bolt",
@@ -2034,7 +2086,8 @@
           "Fighting",
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Fighting)"
       }
     ],
     "retreatCost": 2,
@@ -2060,7 +2113,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_random_energy_opponent"
       },
       {
         "name": "Tyrannical Hole",
@@ -2096,7 +2150,8 @@
         "cost": [
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=3, per=60)"
       }
     ],
     "retreatCost": 1,
@@ -2120,7 +2175,8 @@
     "abilities": [
       {
         "name": "Gladion",
-        "effect": "Put 1 random Type: Null or Silvally from your deck into your hand."
+        "effect": "Put 1 random Type: Null or Silvally from your deck into your hand.",
+        "handler": "search_deck_named(names=(Type: Null, Silvally))"
       }
     ],
     "evolvesFrom": null,
@@ -2141,7 +2197,8 @@
     "abilities": [
       {
         "name": "Looker",
-        "effect": "Your opponent reveals all of the Supporter cards in their deck."
+        "effect": "Your opponent reveals all of the Supporter cards in their deck.",
+        "handler": "reveal_opponent_supporters"
       }
     ],
     "evolvesFrom": null,
@@ -2162,7 +2219,8 @@
     "abilities": [
       {
         "name": "Lusamine",
-        "effect": "You can use this card only if your opponent has gotten at least 1 point. Choose 1 of your Ultra Beasts. Attach 2 random Energy from your discard pile to that Pokémon."
+        "effect": "You can use this card only if your opponent has gotten at least 1 point. Choose 1 of your Ultra Beasts. Attach 2 random Energy from your discard pile to that Pokémon.",
+        "handler": "lusamine_attach"
       }
     ],
     "evolvesFrom": null,
@@ -2184,7 +2242,8 @@
         "damage": "20",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "attach_energy_zone_self_bracket(energy_type=l)"
       },
       {
         "name": "Mach Bolt",
@@ -2220,7 +2279,8 @@
           "Fighting",
           "Fighting",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Fighting)"
       }
     ],
     "retreatCost": 2,
@@ -2246,7 +2306,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "discard_random_energy_opponent"
       },
       {
         "name": "Tyrannical Hole",
@@ -2282,7 +2343,8 @@
         "cost": [
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=3, per=60)"
       }
     ],
     "retreatCost": 1,
@@ -2317,7 +2379,8 @@
           "Grass",
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "self_cant_use_specific_attack(attack_name=big beat)"
       }
     ],
     "retreatCost": 2,
@@ -2369,7 +2432,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -2450,7 +2514,8 @@
     "abilities": [
       {
         "name": "Water Shuriken",
-        "effect": "Once during your turn, you may do 20 damage to 1 of your opponent's Pokémon."
+        "effect": "Once during your turn, you may do 20 damage to 1 of your opponent's Pokémon.",
+        "handler": "bench_hit_opponent(amount=20)"
       }
     ],
     "evolvesFrom": "Frogadier",
@@ -2473,7 +2538,8 @@
         "cost": [
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_energy(per=20)"
       }
     ],
     "retreatCost": 1,
@@ -2554,7 +2620,8 @@
     "abilities": [
       {
         "name": "Drive Off",
-        "effect": "Once during your turn, you may switch out your opponent's Active Pokémon to the Bench. (Your opponent chooses the new Active Pokémon.)"
+        "effect": "Once during your turn, you may switch out your opponent's Active Pokémon to the Bench. (Your opponent chooses the new Active Pokémon.)",
+        "handler": "switch_opponent_active"
       }
     ],
     "evolvesFrom": "Pidgeotto",
@@ -2577,7 +2644,8 @@
         "cost": [
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "shuffle_opponent_active_into_deck"
       }
     ],
     "retreatCost": 1,
@@ -2603,7 +2671,8 @@
         "cost": [
           "Grass",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_per_energy_damage(per=50)"
       }
     ],
     "retreatCost": 1,
@@ -2630,7 +2699,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -2663,7 +2733,8 @@
     "abilities": [
       {
         "name": "Primeval Law",
-        "effect": "Your opponent can't play any Pokémon from their hand to evolve their Active Pokémon."
+        "effect": "Your opponent can't play any Pokémon from their hand to evolve their Active Pokémon.",
+        "handler": "passive_block_evolution"
       }
     ],
     "evolvesFrom": "Old Amber",
@@ -2687,7 +2758,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "bonus_per_opponent_bench(per=20)"
       }
     ],
     "retreatCost": 1,
@@ -2713,7 +2785,8 @@
         "cost": [
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": 1,
@@ -2721,7 +2794,8 @@
     "abilities": [
       {
         "name": "More Poison",
-        "effect": "Your opponent's Active Pokémon takes +10 damage from being Poisoned."
+        "effect": "Your opponent's Active Pokémon takes +10 damage from being Poisoned.",
+        "handler": "toxic_poison"
       }
     ],
     "evolvesFrom": null,

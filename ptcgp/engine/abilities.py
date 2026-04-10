@@ -35,13 +35,15 @@ def use_ability(state: GameState, slot_ref: SlotRef) -> GameState:
 
     state = mutate_slot(state, slot_ref, lambda s: setattr(s, "ability_used_this_turn", True))
 
-    if card.ability.effect_text:
+    if card.ability.effect_text or card.ability.handler:
         from ptcgp.effects.apply import apply_effects
         state = apply_effects(
             state,
             card.ability.effect_text,
             acting_player=slot_ref.player,
             source_ref=slot_ref,
+            handler_str=card.ability.handler,
+            cached_effects=card.ability.cached_effects,
         )
 
     return state

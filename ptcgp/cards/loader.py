@@ -58,6 +58,7 @@ def _parse_attacks(raw_attacks: list[dict]) -> tuple[Attack, ...]:
     the target itself, so we only want ONE logical attack per (name, cost,
     damage) triple — otherwise the UI shows three identical "Leaf Supply" rows.
     """
+    from ptcgp.effects.apply import parse_handler_string
     attacks: list[Attack] = []
     seen: set[tuple[str, tuple, int]] = set()
     for a in raw_attacks or []:
@@ -68,26 +69,33 @@ def _parse_attacks(raw_attacks: list[dict]) -> tuple[Attack, ...]:
         if key in seen:
             continue
         seen.add(key)
+        handler = a.get("handler", "")
         attacks.append(Attack(
             name=name,
             damage=damage,
             cost=cost,
             effect_text=a.get("effect", ""),
+            handler=handler,
+            cached_effects=tuple(parse_handler_string(handler)),
         ))
     return tuple(attacks)
 
 
 def _parse_ability(raw_abilities: list[dict]) -> Optional[Ability]:
     """Return the first ability that is a true Pokemon ability (not a trainer handler)."""
+    from ptcgp.effects.apply import parse_handler_string
     for ab in (raw_abilities or []):
         # Skip abilities that are really just trainer card handler metadata
         name = ab.get("name", "")
         effect = ab.get("effect", "")
         if name and effect:
+            handler = ab.get("handler", "")
             return Ability(
                 name=name,
                 effect_text=effect,
                 is_passive=False,  # refined later per card if needed
+                handler=handler,
+                cached_effects=tuple(parse_handler_string(handler)),
             )
     return None
 
@@ -132,6 +140,7 @@ def load_card_from_dict(data: dict) -> Card:
         ability = _parse_ability(data.get("abilities", []))
         evolves_from = data.get("evolvesFrom") or None
         trainer_effect_text = ""
+        trainer_handler = ""
     else:
         # Trainer card
         subtype_low = subtype.lower()
@@ -153,12 +162,21 @@ def load_card_from_dict(data: dict) -> Card:
         attacks = ()
         ability = None
 
-        # Extract trainer effect text from the abilities list
+        # Extract trainer effect text and handler from the abilities list
+        from ptcgp.effects.apply import parse_handler_string
         raw_abs = data.get("abilities", [])
         if raw_abs:
             trainer_effect_text = raw_abs[0].get("effect", "")
+            trainer_handler = raw_abs[0].get("handler", "")
         else:
             trainer_effect_text = ""
+            trainer_handler = ""
+
+    if is_pokemon:
+        cached_trainer_effects: tuple = ()
+    else:
+        from ptcgp.effects.apply import parse_handler_string
+        cached_trainer_effects = tuple(parse_handler_string(trainer_handler))
 
     return Card(
         id=data["id"],
@@ -175,6 +193,8 @@ def load_card_from_dict(data: dict) -> Card:
         attacks=attacks,
         ability=ability,
         trainer_effect_text=trainer_effect_text,
+        trainer_handler=trainer_handler if not is_pokemon else "",
+        cached_trainer_effects=cached_trainer_effects,
     )
 
 

@@ -44,7 +44,7 @@ def start_turn(state: GameState) -> GameState:
         return state
 
     if player.deck:
-        player.hand.append(player.deck.pop(0))
+        player.hand.append(player.deck.pop())
 
     if player.energy_types:
         player.energy_available = state.rng.choice(player.energy_types)

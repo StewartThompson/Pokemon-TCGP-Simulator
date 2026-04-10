@@ -119,6 +119,8 @@ def _draw_opening_hand(state: GameState, player_index: int) -> GameState:
         player.deck = list(player.hand) + player.deck
         player.hand = []
 
+    # Reverse so the "top" of deck is at the back — allows O(1) pop() draws.
+    player.deck.reverse()
     return state
 
 

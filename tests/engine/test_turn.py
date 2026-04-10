@@ -93,7 +93,7 @@ def test_second_player_draws():
 
     assert state.turn_number == 1
     assert len(state.players[0].hand) == 1
-    assert state.players[0].hand[0] == deck_before[0]
+    assert state.players[0].hand[0] == deck_before[-1]  # deck stored reversed; pop() draws from back
     assert len(state.players[0].deck) == len(deck_before) - 1
 
 

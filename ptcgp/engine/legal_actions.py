@@ -175,7 +175,7 @@ def get_legal_actions(state: GameState) -> list[Action]:
             # Attacks with a targeted side-effect (e.g. Lilligant Leaf Supply)
             # emit one Action per legal sub-target. Untargeted attacks emit a
             # single Action with target=None.
-            for sub_target in get_attack_sub_targets(attack.effect_text, cp, player):
+            for sub_target in get_attack_sub_targets(attack.effect_text, cp, player, handler_str=attack.handler, cached_effects=attack.cached_effects):
                 actions.append(
                     Action(kind=ActionKind.ATTACK, attack_index=i, target=sub_target)
                 )
@@ -197,7 +197,7 @@ def _rare_candy_actions(state: GameState, rare_candy_hand_idx: int) -> list[Acti
     (basic target, stage 2 hand index) pair. Rare Candy itself is banned on
     the very first turn of the game — mirrors regular evolve timing.
     """
-    from ptcgp.cards.database import get_all_cards
+    from ptcgp.cards.database import get_basic_to_stage2
     cp = state.current_player
     player = state.current
     actions: list[Action] = []
@@ -206,21 +206,9 @@ def _rare_candy_actions(state: GameState, rare_candy_hand_idx: int) -> list[Acti
     if state.turn_number < 2:
         return actions
 
-    db = get_all_cards()
-
-    # Build a lookup of (basic_name) -> set of stage 2 names that evolve to it
-    # via some stage 1. Doing this per-call is cheap; there are only a few
-    # hundred cards.
-    basic_to_stage2: dict[str, set[str]] = {}
-    stage1_by_name: dict[str, list] = {}
-    for c in db.values():
-        if c.stage == Stage.STAGE_1 and c.evolves_from:
-            stage1_by_name.setdefault(c.name, []).append(c)
-    for c in db.values():
-        if c.stage == Stage.STAGE_2 and c.evolves_from:
-            for stage1 in stage1_by_name.get(c.evolves_from, []):
-                if stage1.evolves_from:
-                    basic_to_stage2.setdefault(stage1.evolves_from, set()).add(c.name)
+    # Use the DB-level cached map (built once at load_defaults) instead of
+    # rebuilding it from scratch on every call.
+    basic_to_stage2 = get_basic_to_stage2()
 
     def _enumerate_for_slot(slot_ref: SlotRef):
         slot = get_slot(state, slot_ref)

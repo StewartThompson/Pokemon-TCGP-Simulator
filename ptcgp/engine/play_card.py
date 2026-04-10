@@ -91,7 +91,7 @@ def play_item(
         else:
             adjusted_extra_idx = extra_hand_index
 
-    if card.trainer_effect_text:
+    if card.trainer_effect_text or card.trainer_handler:
         from ptcgp.effects.apply import apply_effects
         extra: dict = {}
         if extra_card_id is not None:
@@ -103,6 +103,8 @@ def play_item(
             acting_player=state.current_player,
             target_ref=target,
             extra=extra,
+            handler_str=card.trainer_handler,
+            cached_effects=card.cached_trainer_effects,
         )
     return state
 
@@ -121,13 +123,15 @@ def play_supporter(
     player.discard.append(card.id)
     player.has_played_supporter = True
 
-    if card.trainer_effect_text:
+    if card.trainer_effect_text or card.trainer_handler:
         from ptcgp.effects.apply import apply_effects
         state = apply_effects(
             state,
             card.trainer_effect_text,
             acting_player=state.current_player,
             target_ref=target,
+            handler_str=card.trainer_handler,
+            cached_effects=card.cached_trainer_effects,
         )
     return state
 
@@ -148,12 +152,14 @@ def attach_tool(state: GameState, hand_index: int, target: SlotRef) -> GameState
     player.hand.pop(hand_index)
     slot.tool_card_id = card.id
 
-    if card.trainer_effect_text:
+    if card.trainer_effect_text or card.trainer_handler:
         from ptcgp.effects.apply import apply_effects
         state = apply_effects(
             state,
             card.trainer_effect_text,
             acting_player=state.current_player,
             target_ref=target,
+            handler_str=card.trainer_handler,
+            cached_effects=card.cached_trainer_effects,
         )
     return state

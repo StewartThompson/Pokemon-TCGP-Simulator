@@ -15,7 +15,8 @@
         "damage": "",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "search_deck_named_basic(name=weedle)"
       }
     ],
     "retreatCost": 1,
@@ -40,7 +41,8 @@
         "damage": "20",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "apply_paralysis"
       }
     ],
     "retreatCost": 2,
@@ -66,7 +68,8 @@
         "cost": [
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "discard_random_energy_opponent"
       }
     ],
     "retreatCost": 1,
@@ -93,7 +96,8 @@
           "Grass",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "flip_until_tails_bonus(per=40)"
       }
     ],
     "retreatCost": 2,
@@ -118,7 +122,8 @@
         "damage": "",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "search_deck_grass_pokemon"
       }
     ],
     "retreatCost": 1,
@@ -169,7 +174,8 @@
         "cost": [
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "bonus_if_opponent_ex(bonus=70)"
       }
     ],
     "retreatCost": 1,
@@ -243,7 +249,8 @@
         "damage": "",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "attach_energy_zone_self(count=3, energy_type=Fire)"
       },
       {
         "name": "Steam Artillery",
@@ -305,7 +312,8 @@
           "Fire",
           "Fire",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_attack_block_next_turn"
       }
     ],
     "retreatCost": 3,
@@ -332,7 +340,8 @@
           "Fire",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=10)"
       }
     ],
     "retreatCost": 2,
@@ -429,7 +438,8 @@
         "damage": "",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=30)"
       }
     ],
     "retreatCost": 1,
@@ -454,7 +464,8 @@
         "damage": "",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "random_hit_one(amount=30)"
       }
     ],
     "retreatCost": 1,
@@ -481,7 +492,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "random_multi_hit(times=3, amount=50)"
       }
     ],
     "retreatCost": 1,
@@ -509,7 +521,8 @@
           "Water",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "splash_bench_opponent(amount=10)"
       }
     ],
     "retreatCost": 3,
@@ -541,7 +554,8 @@
     "abilities": [
       {
         "name": "Retreat Directive",
-        "effect": "Your Active Dondozo has no Retreat Cost."
+        "effect": "Your Active Dondozo has no Retreat Cost.",
+        "handler": "passive_named_no_retreat"
       }
     ],
     "evolvesFrom": null,
@@ -565,7 +579,8 @@
           "Lightning",
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Ll)"
       }
     ],
     "retreatCost": 1,
@@ -615,7 +630,8 @@
         "cost": [
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=30)"
       }
     ],
     "retreatCost": 1,
@@ -640,7 +656,8 @@
         "damage": "10",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "attach_energy_zone_bench_bracket(energy_type=l, target_type=l)"
       }
     ],
     "retreatCost": 1,
@@ -722,7 +739,8 @@
     "abilities": [
       {
         "name": "Counterattack",
-        "effect": "If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon."
+        "effect": "If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon.",
+        "handler": "passive_retaliate(amount=20)"
       }
     ],
     "evolvesFrom": "Pawmo",
@@ -793,7 +811,8 @@
         "cost": [
           "Psychic",
           "Psychic"
-        ]
+        ],
+        "handler": "splash_bench_opponent(amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -819,7 +838,8 @@
         "cost": [
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=4, per=20)"
       }
     ],
     "retreatCost": 1,
@@ -895,7 +915,8 @@
           "Psychic",
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -903,7 +924,8 @@
     "abilities": [
       {
         "name": "Broken-Space Bellow",
-        "effect": "Once during your turn, you may take a Psychic Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends."
+        "effect": "Once during your turn, you may take a Psychic Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends.",
+        "handler": "attach_energy_zone_self(count=1, energy_type=Psychic)"
       }
     ],
     "evolvesFrom": null,
@@ -925,7 +947,8 @@
         "damage": "",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "prevent_damage_next_turn"
       }
     ],
     "retreatCost": 1,
@@ -975,7 +998,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=30)"
       }
     ],
     "retreatCost": 2,
@@ -1001,7 +1025,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bonus_if_extra_energy(threshold=2, bonus=50, energy_type=Fighting)"
       }
     ],
     "retreatCost": 2,
@@ -1103,7 +1128,8 @@
           "Fighting",
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=30)"
       }
     ],
     "retreatCost": 2,
@@ -1129,7 +1155,8 @@
         "cost": [
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "multi_coin_damage(count=2, per=50)"
       }
     ],
     "retreatCost": 1,
@@ -1181,7 +1208,8 @@
           "Darkness",
           "Darkness",
           "Colorless"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": 2,
@@ -1206,7 +1234,8 @@
         "damage": "10",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "apply_poison"
       }
     ],
     "retreatCost": 1,
@@ -1232,7 +1261,8 @@
         "cost": [
           "Darkness",
           "Darkness"
-        ]
+        ],
+        "handler": "bonus_if_opponent_poisoned(bonus=60)"
       }
     ],
     "retreatCost": 3,
@@ -1257,7 +1287,8 @@
         "damage": "20",
         "cost": [
           "Darkness"
-        ]
+        ],
+        "handler": "apply_confusion"
       }
     ],
     "retreatCost": 1,
@@ -1314,7 +1345,8 @@
     "abilities": [
       {
         "name": "Poison Coating",
-        "effect": "Once during your turn, you may flip a coin. If heads, your opponent's Active Pokémon is now Poisoned."
+        "effect": "Once during your turn, you may flip a coin. If heads, your opponent's Active Pokémon is now Poisoned.",
+        "handler": "apply_poison"
       }
     ],
     "evolvesFrom": "Shroodle",
@@ -1361,7 +1393,8 @@
         "cost": [
           "Metal",
           "Metal"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=30)"
       }
     ],
     "retreatCost": 2,
@@ -1388,7 +1421,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=80)"
       }
     ],
     "retreatCost": 2,
@@ -1439,7 +1473,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "prevent_damage_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -1466,7 +1501,8 @@
           "Metal",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_per_typed_energy_damage(per=50, energy_type=m)"
       }
     ],
     "retreatCost": 2,
@@ -1572,7 +1608,8 @@
     "abilities": [
       {
         "name": "Comforting Song",
-        "effect": "Once during your turn, you may heal 20 damage from your Active Pokémon."
+        "effect": "Once during your turn, you may heal 20 damage from your Active Pokémon.",
+        "handler": "heal_active(amount=20)"
       }
     ],
     "evolvesFrom": "Jigglypuff",
@@ -1673,7 +1710,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "heal_self(amount=30)"
       }
     ],
     "retreatCost": 3,
@@ -1746,7 +1784,8 @@
         "damage": "20",
         "cost": [
           "Colorless"
-        ]
+        ],
+        "handler": "self_attack_buff_next_turn(attack_name=overacceleration, amount=20)"
       }
     ],
     "retreatCost": 1,
@@ -1770,7 +1809,8 @@
     "abilities": [
       {
         "name": "Iono",
-        "effect": "Each player shuffles the cards in their hand into their deck, then draws that many cards."
+        "effect": "Each player shuffles the cards in their hand into their deck, then draws that many cards.",
+        "handler": "iono_hand_shuffle"
       }
     ],
     "evolvesFrom": null,
@@ -1791,7 +1831,8 @@
     "abilities": [
       {
         "name": "Pokémon Center Lady",
-        "effect": "Heal 30 damage from 1 of your Pokémon, and it recovers from all Special Conditions."
+        "effect": "Heal 30 damage from 1 of your Pokémon, and it recovers from all Special Conditions.",
+        "handler": "heal_target(amount=30)"
       }
     ],
     "evolvesFrom": null,
@@ -1812,7 +1853,8 @@
     "abilities": [
       {
         "name": "Red",
-        "effect": "During this turn, attacks used by your Pokémon do +20 damage to your opponent's Active Pokémon ex."
+        "effect": "During this turn, attacks used by your Pokémon do +20 damage to your opponent's Active Pokémon ex.",
+        "handler": "supporter_damage_aura(amount=20, names=())"
       }
     ],
     "evolvesFrom": null,
@@ -1833,7 +1875,8 @@
     "abilities": [
       {
         "name": "Team Rocket Grunt",
-        "effect": "Flip a coin until you get tails. For each heads, discard a random Energy from your opponent's Active Pokémon."
+        "effect": "Flip a coin until you get tails. For each heads, discard a random Energy from your opponent's Active Pokémon.",
+        "handler": "discard_random_energy_opponent"
       }
     ],
     "evolvesFrom": null,
@@ -1856,7 +1899,8 @@
         "cost": [
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "bonus_if_opponent_ex(bonus=70)"
       }
     ],
     "retreatCost": 1,
@@ -1912,7 +1956,8 @@
     "abilities": [
       {
         "name": "Retreat Directive",
-        "effect": "Your Active Dondozo has no Retreat Cost."
+        "effect": "Your Active Dondozo has no Retreat Cost.",
+        "handler": "passive_named_no_retreat"
       }
     ],
     "evolvesFrom": null,
@@ -1942,7 +1987,8 @@
     "abilities": [
       {
         "name": "Poison Coating",
-        "effect": "Once during your turn, you may flip a coin. If heads, your opponent's Active Pokémon is now Poisoned."
+        "effect": "Once during your turn, you may flip a coin. If heads, your opponent's Active Pokémon is now Poisoned.",
+        "handler": "apply_poison"
       }
     ],
     "evolvesFrom": "Shroodle",
@@ -1966,7 +2012,8 @@
           "Metal",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "multi_coin_per_typed_energy_damage(per=50, energy_type=m)"
       }
     ],
     "retreatCost": 2,
@@ -1999,7 +2046,8 @@
     "abilities": [
       {
         "name": "Comforting Song",
-        "effect": "Once during your turn, you may heal 20 damage from your Active Pokémon."
+        "effect": "Once during your turn, you may heal 20 damage from your Active Pokémon.",
+        "handler": "heal_active(amount=20)"
       }
     ],
     "evolvesFrom": "Jigglypuff",
@@ -2022,7 +2070,8 @@
         "cost": [
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "discard_random_energy_opponent"
       }
     ],
     "retreatCost": 1,
@@ -2047,7 +2096,8 @@
         "damage": "",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "attach_energy_zone_self(count=3, energy_type=Fire)"
       },
       {
         "name": "Steam Artillery",
@@ -2085,7 +2135,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "random_multi_hit(times=3, amount=50)"
       }
     ],
     "retreatCost": 1,
@@ -2112,7 +2163,8 @@
           "Lightning",
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Ll)"
       }
     ],
     "retreatCost": 1,
@@ -2140,7 +2192,8 @@
           "Psychic",
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -2148,7 +2201,8 @@
     "abilities": [
       {
         "name": "Broken-Space Bellow",
-        "effect": "Once during your turn, you may take a Psychic Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends."
+        "effect": "Once during your turn, you may take a Psychic Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends.",
+        "handler": "attach_energy_zone_self(count=1, energy_type=Psychic)"
       }
     ],
     "evolvesFrom": null,
@@ -2172,7 +2226,8 @@
           "Fighting",
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=30)"
       }
     ],
     "retreatCost": 2,
@@ -2198,7 +2253,8 @@
         "cost": [
           "Darkness",
           "Darkness"
-        ]
+        ],
+        "handler": "bonus_if_opponent_poisoned(bonus=60)"
       }
     ],
     "retreatCost": 3,
@@ -2225,7 +2281,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=80)"
       }
     ],
     "retreatCost": 2,
@@ -2253,7 +2310,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "heal_self(amount=30)"
       }
     ],
     "retreatCost": 3,
@@ -2277,7 +2335,8 @@
     "abilities": [
       {
         "name": "Iono",
-        "effect": "Each player shuffles the cards in their hand into their deck, then draws that many cards."
+        "effect": "Each player shuffles the cards in their hand into their deck, then draws that many cards.",
+        "handler": "iono_hand_shuffle"
       }
     ],
     "evolvesFrom": null,
@@ -2298,7 +2357,8 @@
     "abilities": [
       {
         "name": "Pokémon Center Lady",
-        "effect": "Heal 30 damage from 1 of your Pokémon, and it recovers from all Special Conditions."
+        "effect": "Heal 30 damage from 1 of your Pokémon, and it recovers from all Special Conditions.",
+        "handler": "heal_target(amount=30)"
       }
     ],
     "evolvesFrom": null,
@@ -2319,7 +2379,8 @@
     "abilities": [
       {
         "name": "Red",
-        "effect": "During this turn, attacks used by your Pokémon do +20 damage to your opponent's Active Pokémon ex."
+        "effect": "During this turn, attacks used by your Pokémon do +20 damage to your opponent's Active Pokémon ex.",
+        "handler": "supporter_damage_aura(amount=20, names=())"
       }
     ],
     "evolvesFrom": null,
@@ -2340,7 +2401,8 @@
     "abilities": [
       {
         "name": "Team Rocket Grunt",
-        "effect": "Flip a coin until you get tails. For each heads, discard a random Energy from your opponent's Active Pokémon."
+        "effect": "Flip a coin until you get tails. For each heads, discard a random Energy from your opponent's Active Pokémon.",
+        "handler": "discard_random_energy_opponent"
       }
     ],
     "evolvesFrom": null,
@@ -2364,7 +2426,8 @@
           "Lightning",
           "Lightning",
           "Lightning"
-        ]
+        ],
+        "handler": "discard_energy_self(energy_type=Ll)"
       }
     ],
     "retreatCost": 1,
@@ -2390,7 +2453,8 @@
         "cost": [
           "Darkness",
           "Darkness"
-        ]
+        ],
+        "handler": "bonus_if_opponent_poisoned(bonus=60)"
       }
     ],
     "retreatCost": 3,
@@ -2417,7 +2481,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "coin_flip_bonus_damage(amount=80)"
       }
     ],
     "retreatCost": 2,
@@ -2445,7 +2510,8 @@
           "Colorless",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "heal_self(amount=30)"
       }
     ],
     "retreatCost": 3,
@@ -2473,7 +2539,8 @@
           "Psychic",
           "Psychic",
           "Colorless"
-        ]
+        ],
+        "handler": "self_damage(amount=20)"
       }
     ],
     "retreatCost": 2,
@@ -2481,7 +2548,8 @@
     "abilities": [
       {
         "name": "Broken-Space Bellow",
-        "effect": "Once during your turn, you may take a Psychic Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends."
+        "effect": "Once during your turn, you may take a Psychic Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends.",
+        "handler": "attach_energy_zone_self(count=1, energy_type=Psychic)"
       }
     ],
     "evolvesFrom": null,
@@ -2503,7 +2571,8 @@
         "damage": "",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "search_deck_named_basic(name=weedle)"
       }
     ],
     "retreatCost": 1,
@@ -2528,7 +2597,8 @@
         "damage": "20",
         "cost": [
           "Grass"
-        ]
+        ],
+        "handler": "apply_paralysis"
       }
     ],
     "retreatCost": 2,
@@ -2602,7 +2672,8 @@
         "damage": "",
         "cost": [
           "Water"
-        ]
+        ],
+        "handler": "random_hit_one(amount=30)"
       }
     ],
     "retreatCost": 1,
@@ -2630,7 +2701,8 @@
           "Water",
           "Colorless",
           "Colorless"
-        ]
+        ],
+        "handler": "splash_bench_opponent(amount=10)"
       }
     ],
     "retreatCost": 3,
@@ -2655,7 +2727,8 @@
         "damage": "10",
         "cost": [
           "Lightning"
-        ]
+        ],
+        "handler": "attach_energy_zone_bench_bracket(energy_type=l, target_type=l)"
       }
     ],
     "retreatCost": 1,
@@ -2731,7 +2804,8 @@
           "Metal",
           "Metal",
           "Colorless"
-        ]
+        ],
+        "handler": "prevent_damage_next_turn"
       }
     ],
     "retreatCost": 2,
@@ -2757,7 +2831,8 @@
         "cost": [
           "Grass",
           "Grass"
-        ]
+        ],
+        "handler": "discard_random_energy_opponent"
       }
     ],
     "retreatCost": 1,
@@ -2782,7 +2857,8 @@
         "damage": "",
         "cost": [
           "Fire"
-        ]
+        ],
+        "handler": "attach_energy_zone_self(count=3, energy_type=Fire)"
       },
       {
         "name": "Steam Artillery",
@@ -2820,7 +2896,8 @@
           "Water",
           "Water",
           "Water"
-        ]
+        ],
+        "handler": "random_multi_hit(times=3, amount=50)"
       }
     ],
     "retreatCost": 1,
@@ -2847,7 +2924,8 @@
           "Fighting",
           "Fighting",
           "Fighting"
-        ]
+        ],
+        "handler": "bench_hit_opponent(amount=30)"
       }
     ],
     "retreatCost": 2,
@@ -2871,7 +2949,8 @@
     "abilities": [
       {
         "name": "Poké Ball",
-        "effect": "Put 1 random Basic Pokémon from your deck into your hand."
+        "effect": "Put 1 random Basic Pokémon from your deck into your hand.",
+        "handler": "search_deck_random_basic"
       }
     ],
     "evolvesFrom": null,

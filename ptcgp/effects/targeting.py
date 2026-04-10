@@ -12,7 +12,6 @@ from typing import Callable, Optional
 from ptcgp.cards.card import Card
 from ptcgp.cards.database import get_card
 from ptcgp.cards.types import Element
-from ptcgp.effects.parser import parse_effect_text
 from ptcgp.engine.actions import SlotRef
 from ptcgp.engine.state import PlayerState, PokemonSlot
 
@@ -57,6 +56,21 @@ _OWN_BENCH_TARGETS: dict[str, Callable[[PokemonSlot], bool]] = {
 }
 
 
+def _effect_names_from(
+    handler_str: str, effect_text: str, cached_effects: tuple = ()
+) -> list[str]:
+    """Return the list of effect names, using cached_effects when available."""
+    if cached_effects:
+        return [e.name for e in cached_effects]
+    if handler_str:
+        from ptcgp.effects.apply import parse_handler_string
+        return [e.name for e in parse_handler_string(handler_str)]
+    if effect_text:
+        from ptcgp.effects.parser import parse_effect_text
+        return [e.name for e in parse_effect_text(effect_text)]
+    return []
+
+
 def _collect_own_targets(
     player_index: int,
     player: PlayerState,
@@ -82,11 +96,19 @@ def get_play_targets(
     the card needs a target but no legal target exists (caller should suppress
     the action entirely).
     """
-    return _get_targets_for_effect_text(card.trainer_effect_text, player_index, player)
+    return _get_targets_for(
+        card.trainer_handler, card.trainer_effect_text, player_index, player,
+        cached_effects=card.cached_trainer_effects,
+    )
 
 
 def get_attack_sub_targets(
-    attack_effect_text: str, player_index: int, player: PlayerState
+    attack_effect_text: str,
+    player_index: int,
+    player: PlayerState,
+    *,
+    handler_str: str = "",
+    cached_effects: tuple = (),
 ) -> list[Optional[SlotRef]]:
     """Return legal sub-targets for an attack's side-effect.
 
@@ -95,40 +117,37 @@ def get_attack_sub_targets(
     needs a target returns ``[None]`` when no valid target exists — the effect
     will silently no-op — rather than suppressing the attack altogether.
     """
-    if not attack_effect_text:
+    if not cached_effects and not handler_str and not attack_effect_text:
         return [None]
 
-    effects = parse_effect_text(attack_effect_text)
-    for effect in effects:
-        if effect.name in _OWN_POKEMON_TARGETS:
-            refs = _collect_own_targets(
-                player_index, player, _OWN_POKEMON_TARGETS[effect.name]
-            )
+    names = _effect_names_from(handler_str, attack_effect_text, cached_effects)
+    for name in names:
+        if name in _OWN_POKEMON_TARGETS:
+            refs = _collect_own_targets(player_index, player, _OWN_POKEMON_TARGETS[name])
             return list(refs) if refs else [None]
-        if effect.name in _OWN_BENCH_TARGETS:
+        if name in _OWN_BENCH_TARGETS:
             refs = _collect_own_targets(
-                player_index, player, _OWN_BENCH_TARGETS[effect.name], bench_only=True
+                player_index, player, _OWN_BENCH_TARGETS[name], bench_only=True
             )
             return list(refs) if refs else [None]
     return [None]
 
 
-def _get_targets_for_effect_text(
-    effect_text: str, player_index: int, player: PlayerState
+def _get_targets_for(
+    handler_str: str, effect_text: str, player_index: int, player: PlayerState,
+    cached_effects: tuple = (),
 ) -> list[Optional[SlotRef]]:
-    effects = parse_effect_text(effect_text)
-    if not effects:
+    names = _effect_names_from(handler_str, effect_text, cached_effects)
+    if not names:
         return [None]
 
-    for effect in effects:
-        if effect.name in _OWN_POKEMON_TARGETS:
-            refs = _collect_own_targets(
-                player_index, player, _OWN_POKEMON_TARGETS[effect.name]
-            )
+    for name in names:
+        if name in _OWN_POKEMON_TARGETS:
+            refs = _collect_own_targets(player_index, player, _OWN_POKEMON_TARGETS[name])
             return list(refs) if refs else []
-        if effect.name in _OWN_BENCH_TARGETS:
+        if name in _OWN_BENCH_TARGETS:
             refs = _collect_own_targets(
-                player_index, player, _OWN_BENCH_TARGETS[effect.name], bench_only=True
+                player_index, player, _OWN_BENCH_TARGETS[name], bench_only=True
             )
             return list(refs) if refs else []
 

@@ -17,3 +17,49 @@ htmlcov/
 .vscode/launch.json
 legacy/
 models/
+=======
+# ── IDE / Editor ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.prof
+
+# ── Rust ──────────────────────────────────────────────────────────────────────
+ptcgp_rust/target/
+Cargo.lock
+
+# ── Compiled Python extension (maturin output) ────────────────────────────────
+ptcgp_rust/*.so
+ptcgp_rust/*.pyd
+ptcgp_rust/*.dylib
+ptcgp_rust/*.dll
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Models / large data ───────────────────────────────────────────────────────
+models/
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+legacy/Untitled
+*.log

@@ -1,10 +1,22 @@
-// run_game
-// Stub for T24 compile check — full implementation in Wave 9 (T23)
+//! GameRunner — drives a single complete game to completion.
+//!
+//! Implemented in Wave 9 (T23).
 
-/// Result from a single simulated game.
+use crate::card::CardDb;
+use crate::state::GameState;
+use crate::types::{ActionKind, Element, GamePhase};
+use crate::agents::Agent;
+use crate::engine::{setup, mutations, ko, turn};
+use crate::constants::MAX_TURNS;
+
+// ------------------------------------------------------------------ //
+// Public API
+// ------------------------------------------------------------------ //
+
+/// Result of a completed game.
 #[derive(Debug, Clone)]
 pub struct GameResult {
-    /// Index of the winning player (0 or 1), or None for a draw / timeout.
+    /// `Some(0)` player 0 wins, `Some(1)` player 1 wins, `None` for draw.
     pub winner: Option<usize>,
     /// Number of turns the game lasted.
     pub turns: u32,
@@ -14,88 +26,283 @@ pub struct GameResult {
     pub player1_points: u8,
 }
 
-/// Run a single game to completion and return the result.
+/// Runs a complete game between two agents, returning the result.
 ///
 /// # Arguments
-/// * `db`     — shared card database
-/// * `deck0`  — list of card indices for player 0's deck (20 cards)
-/// * `deck1`  — list of card indices for player 1's deck (20 cards)
-/// * `e0`     — energy types available to player 0
-/// * `e1`     — energy types available to player 1
-/// * `agent0` — decision-making agent for player 0
-/// * `agent1` — decision-making agent for player 1
-/// * `seed`   — RNG seed for deterministic replay
+/// * `db`                              — card database
+/// * `deck0` / `deck1`                 — 20-card decks as card index vectors
+/// * `energy_types0` / `energy_types1` — energy pools for each player
+/// * `agent0` / `agent1`               — agents controlling each player
+/// * `seed`                            — RNG seed for deterministic replay
 pub fn run_game(
-    db: &crate::card::CardDb,
+    db: &CardDb,
     deck0: Vec<u16>,
     deck1: Vec<u16>,
-    e0: Vec<crate::types::Element>,
-    e1: Vec<crate::types::Element>,
-    agent0: &dyn crate::agents::Agent,
-    agent1: &dyn crate::agents::Agent,
+    energy_types0: Vec<Element>,
+    energy_types1: Vec<Element>,
+    agent0: &dyn Agent,
+    agent1: &dyn Agent,
     seed: u64,
 ) -> GameResult {
-    use crate::engine::setup::{create_game, draw_opening_hands};
-    use crate::types::{GamePhase, ActionKind};
-    use crate::engine::legal_actions::{get_legal_actions, get_legal_promotions};
-    use crate::engine::mutations::apply_action;
+    // 1. Create game state
+    let mut state = setup::create_game(db, deck0, deck1, energy_types0, energy_types1, seed);
 
-    const MAX_TURNS: u32 = 200;
+    // 2. Draw opening hands (mulligan loop inside)
+    setup::draw_opening_hands(&mut state, db);
 
-    let mut state = create_game(db, deck0, deck1, e0, e1, seed);
-    draw_opening_hands(&mut state, db);
+    // 3. Setup phase: each player auto-places their first Basic as their active
+    run_setup_phase(&mut state, db);
 
-    let mut turns = 0u32;
+    // 4. Finalize setup (coin flip for first player, start turn 0)
+    setup::finalize_setup(&mut state, db);
 
+    // 5. Main game loop
+    run_main_loop(&mut state, db, agent0, agent1);
+
+    // 6. Build and return result
+    // state.winner: None = ongoing, Some(-1) = draw,
+    //               Some(0) = p0 wins, Some(1) = p1 wins
+    let winner = match state.winner {
+        Some(w) if w >= 0 => Some(w as usize),
+        _ => None, // draw (Some(-1)) or unexpected None
+    };
+
+    GameResult {
+        winner,
+        turns: state.turn_number.max(0) as u32,
+        player0_points: state.players[0].points,
+        player1_points: state.players[1].points,
+    }
+}
+
+// ------------------------------------------------------------------ //
+// Internal helpers
+// ------------------------------------------------------------------ //
+
+/// Auto-place each player's first Basic Pokemon as their active.
+///
+/// In a real game both players choose simultaneously; for simulation
+/// we pick the first Basic found in each player's hand.
+fn run_setup_phase(state: &mut GameState, db: &CardDb) {
+    for player_idx in 0..2 {
+        let basic_hand_idx = state.players[player_idx]
+            .hand
+            .iter()
+            .enumerate()
+            .find(|(_, &card_idx)| {
+                let card = db.get_by_idx(card_idx);
+                card.kind == crate::types::CardKind::Pokemon
+                    && card.stage == Some(crate::types::Stage::Basic)
+            })
+            .map(|(i, _)| i);
+
+        if let Some(idx) = basic_hand_idx {
+            setup::apply_setup_placement(state, db, player_idx, idx, &[]);
+        }
+    }
+}
+
+/// Drive the main game loop until a winner is determined or the turn limit is hit.
+///
+/// Mirrors the Python `game_runner.py` logic:
+/// - `ATTACK` and `END_TURN` both trigger `advance_turn`.
+/// - `Attack` also triggers `check_and_handle_kos` before advancing.
+/// - `AwaitingBenchPromotion` is resolved before continuing the turn.
+fn run_main_loop(
+    state: &mut GameState,
+    db: &CardDb,
+    agent0: &dyn Agent,
+    agent1: &dyn Agent,
+) {
     loop {
-        // Check win condition
-        if let Some(winner_i8) = state.winner {
-            let p0_pts = state.players[0].points;
-            let p1_pts = state.players[1].points;
-            return GameResult {
-                winner: if winner_i8 >= 0 { Some(winner_i8 as usize) } else { None },
-                turns,
-                player0_points: p0_pts,
-                player1_points: p1_pts,
-            };
+        // Exit if the game is already over
+        if state.winner.is_some() || state.phase == GamePhase::GameOver {
+            break;
         }
 
-        if turns >= MAX_TURNS {
-            let p0_pts = state.players[0].points;
-            let p1_pts = state.players[1].points;
-            let winner = if p0_pts > p1_pts {
-                Some(0)
-            } else if p1_pts > p0_pts {
-                Some(1)
-            } else {
-                None
-            };
-            return GameResult {
-                winner,
-                turns,
-                player0_points: p0_pts,
-                player1_points: p1_pts,
-            };
+        // Hard turn-limit guard
+        if state.turn_number >= MAX_TURNS {
+            ko::check_winner(state);
+            break;
         }
 
-        let current = state.current_player;
-        let agent: &dyn crate::agents::Agent = if current == 0 { agent0 } else { agent1 };
+        match state.phase {
+            GamePhase::GameOver => break,
 
-        let actions = match state.phase {
-            GamePhase::AwaitingBenchPromotion => get_legal_promotions(&state, current),
-            _ => get_legal_actions(&state, db),
-        };
+            GamePhase::AwaitingBenchPromotion => {
+                // The player whose active is None must promote a bench Pokemon.
+                let promoting_player = find_promotion_player(state);
+                let agent: &dyn Agent = if promoting_player == 0 { agent0 } else { agent1 };
+                let action = agent.select_action(state, db, promoting_player);
+                // apply_action dispatches Promote → ko::promote_bench
+                mutations::apply_action(state, db, &action);
+                // After promotion phase returns to Main (or GameOver).
+            }
 
-        let action = if actions.is_empty() {
-            crate::actions::Action::end_turn()
-        } else {
-            agent.select_action(&state, db, current)
-        };
+            GamePhase::Main => {
+                let current = state.current_player;
+                let agent: &dyn Agent = if current == 0 { agent0 } else { agent1 };
+                let action = agent.select_action(state, db, current);
+                let action_kind = action.kind;
 
-        if action.kind == ActionKind::EndTurn {
-            turns += 1;
+                // EndTurn → mutations::apply_action → advance_turn (handles turn flip).
+                // Attack → execute_attack (no turn flip inside mutations); we handle below.
+                // All other actions just mutate state; loop continues.
+                mutations::apply_action(state, db, &action);
+
+                // In PTCGP, attacking ends the turn (same as EndTurn).
+                // The Rust mutations layer doesn't auto-advance on Attack, so we mirror
+                // the Python runner: `if action.kind in (ATTACK, END_TURN): advance_turn`.
+                if action_kind == ActionKind::Attack
+                    && state.phase == GamePhase::Main
+                    && state.winner.is_none()
+                {
+                    // Process KOs from the attack before advancing the turn.
+                    ko::check_and_handle_kos(state, db);
+                    if state.winner.is_none() && state.phase == GamePhase::Main {
+                        turn::advance_turn(state, db);
+                    }
+                }
+            }
+
+            GamePhase::Setup => {
+                // Should not be reached after finalize_setup; bail safely.
+                break;
+            }
         }
+    }
+}
 
-        apply_action(&mut state, db, &action);
+/// Return the index (0 or 1) of the player who needs to promote a bench Pokemon.
+///
+/// In `AwaitingBenchPromotion` the player whose active is `None` is the one
+/// who must promote.  Falls back to `current_player` if ambiguous.
+fn find_promotion_player(state: &GameState) -> usize {
+    for i in 0..2 {
+        if state.players[i].active.is_none()
+            && state.players[i].bench.iter().any(|s| s.is_some())
+        {
+            return i;
+        }
+    }
+    state.current_player
+}
+
+// ------------------------------------------------------------------ //
+// Tests
+// ------------------------------------------------------------------ //
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agents::RandomAgent;
+    use crate::card::CardDb;
+    use crate::types::{CardKind, Stage};
+    use std::path::PathBuf;
+
+    fn assets_dir() -> PathBuf {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.pop();
+        d.push("assets/cards");
+        d
+    }
+
+    fn load_db() -> CardDb {
+        CardDb::load_from_dir(&assets_dir())
+    }
+
+    /// Build a 20-card deck of basic Pokemon (up to 2 copies each) and
+    /// return a matching energy type.
+    fn make_basic_deck(db: &CardDb) -> (Vec<u16>, Vec<Element>) {
+        let basics: Vec<u16> = db
+            .cards
+            .iter()
+            .filter(|c| {
+                c.kind == CardKind::Pokemon && c.stage == Some(Stage::Basic) && c.hp > 0
+            })
+            .take(10)
+            .flat_map(|c| [c.idx, c.idx]) // 2 copies each → up to 20
+            .take(20)
+            .collect();
+
+        let energy_type = db
+            .cards
+            .iter()
+            .find(|c| c.kind == CardKind::Pokemon && c.stage == Some(Stage::Basic))
+            .and_then(|c| c.element)
+            .unwrap_or(Element::Grass);
+
+        (basics, vec![energy_type])
+    }
+
+    #[test]
+    fn run_game_completes_without_panic() {
+        let db = load_db();
+        let (deck0, et0) = make_basic_deck(&db);
+        let (deck1, et1) = make_basic_deck(&db);
+
+        assert!(!deck0.is_empty(), "Need at least one basic Pokemon in the db");
+
+        let agent0 = RandomAgent;
+        let agent1 = RandomAgent;
+
+        let result = run_game(&db, deck0, deck1, et0, et1, &agent0, &agent1, 42);
+
+        // Game must have lasted at least one turn
+        assert!(result.turns > 0, "Game should last at least one turn, got {:?}", result);
+
+        // Either a winner is identified or the game reached the turn limit (draw)
+        assert!(
+            result.winner.is_some()
+                || result.player0_points > 0
+                || result.player1_points > 0
+                || result.turns >= MAX_TURNS as u32,
+            "Game ended with no winner and no clear draw condition: {:?}",
+            result,
+        );
+    }
+
+    #[test]
+    fn run_game_reproducible_with_same_seed() {
+        let db = load_db();
+        let (deck0, et0) = make_basic_deck(&db);
+        let (deck1, et1) = make_basic_deck(&db);
+
+        let agent0 = RandomAgent;
+        let agent1 = RandomAgent;
+
+        let r1 = run_game(
+            &db,
+            deck0.clone(), deck1.clone(),
+            et0.clone(), et1.clone(),
+            &agent0, &agent1,
+            7,
+        );
+        let r2 = run_game(
+            &db,
+            deck0, deck1,
+            et0, et1,
+            &agent0, &agent1,
+            7,
+        );
+
+        assert_eq!(r1.winner, r2.winner, "Same seed must give same winner");
+        assert_eq!(r1.turns, r2.turns, "Same seed must give same turn count");
+        assert_eq!(r1.player0_points, r2.player0_points);
+        assert_eq!(r1.player1_points, r2.player1_points);
+    }
+
+    #[test]
+    fn run_game_different_seeds_no_panic() {
+        let db = load_db();
+        let (deck0, et0) = make_basic_deck(&db);
+        let (deck1, et1) = make_basic_deck(&db);
+
+        let agent0 = RandomAgent;
+        let agent1 = RandomAgent;
+
+        // Just verify these seeds don't panic
+        let _r1 = run_game(&db, deck0.clone(), deck1.clone(), et0.clone(), et1.clone(), &agent0, &agent1, 0);
+        let _r2 = run_game(&db, deck0, deck1, et0, et1, &agent0, &agent1, 999_999);
     }
 }

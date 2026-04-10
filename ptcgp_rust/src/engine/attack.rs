@@ -3,6 +3,7 @@
 //! Ported from `ptcgp/engine/attack.py`.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use rand::Rng;
 use regex::Regex;
 
@@ -14,6 +15,7 @@ use crate::constants::WEAKNESS_BONUS;
 use crate::effects::EffectContext;
 use crate::effects::dispatch::{apply_effects, compute_damage_modifier};
 
+#[inline]
 /// Returns true if the slot has enough energy to pay the given cost.
 ///
 /// Typed requirements are matched first; any leftover energy satisfies
@@ -53,12 +55,12 @@ pub fn can_pay_cost(slot: &PokemonSlot, cost: &[CostSymbol]) -> bool {
 /// Scans both the defender's ability text and attached tool text for the
 /// pattern "is damaged by an attack...do X damage to the attacking".
 fn retaliate_damage(defender_slot: &PokemonSlot, defender_card: &Card, db: &CardDb) -> i16 {
-    // Compiled lazily — regex crate doesn't have a built-in once_cell here,
-    // but for the stubbed Wave 5 use this is fine (called infrequently).
-    let pattern = Regex::new(
-        r"(?i)is damaged by an attack.*?do (\d+) damage to the attacking",
-    )
-    .expect("Invalid retaliate regex");
+    // Compiled once at first call via OnceLock — avoids re-compiling on every attack.
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let pattern = RE.get_or_init(|| {
+        Regex::new(r"(?i)is damaged by an attack.*?do (\d+) damage to the attacking")
+            .expect("Invalid retaliate regex")
+    });
 
     let mut total: i16 = 0;
 

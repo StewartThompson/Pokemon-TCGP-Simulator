@@ -45,38 +45,47 @@ impl PokemonSlot {
         }
     }
 
+    #[inline]
     pub fn total_energy(&self) -> u8 {
         energy_total(&self.energy)
     }
 
+    #[inline]
     pub fn energy_count(&self, el: Element) -> u8 {
         energy_get(&self.energy, el)
     }
 
+    #[inline]
     pub fn add_energy(&mut self, el: Element, n: u8) {
         energy_add(&mut self.energy, el, n);
     }
 
+    #[inline]
     pub fn remove_energy(&mut self, el: Element, n: u8) {
         energy_sub(&mut self.energy, el, n);
     }
 
+    #[inline]
     pub fn has_status(&self, s: StatusEffect) -> bool {
         self.status & s.bit() != 0
     }
 
+    #[inline]
     pub fn add_status(&mut self, s: StatusEffect) {
         self.status |= s.bit();
     }
 
+    #[inline]
     pub fn remove_status(&mut self, s: StatusEffect) {
         self.status &= !s.bit();
     }
 
+    #[inline]
     pub fn clear_status(&mut self) {
         self.status = 0;
     }
 
+    #[inline]
     pub fn has_any_status(&self) -> bool {
         self.status != 0
     }
@@ -201,31 +210,38 @@ impl GameState {
         }
     }
 
+    #[inline]
     pub fn current(&self) -> &PlayerState {
         &self.players[self.current_player]
     }
 
+    #[inline]
     pub fn current_mut(&mut self) -> &mut PlayerState {
         &mut self.players[self.current_player]
     }
 
+    #[inline]
     pub fn opponent(&self) -> &PlayerState {
         &self.players[1 - self.current_player]
     }
 
+    #[inline]
     pub fn opponent_mut(&mut self) -> &mut PlayerState {
         &mut self.players[1 - self.current_player]
     }
 
+    #[inline]
     pub fn opponent_index(&self) -> usize {
         1 - self.current_player
     }
 
+    #[inline]
     pub fn is_first_turn(&self) -> bool {
         self.turn_number == 0
             || (self.turn_number == 1 && self.current_player != self.first_player)
     }
 
+    #[inline]
     pub fn player_turn_number(&self) -> u16 {
         (self.turn_number.max(0) as u16) / 2
     }
@@ -235,6 +251,7 @@ impl GameState {
 // Slot accessors (equivalent to slot_utils.py)
 // ------------------------------------------------------------------ //
 
+#[inline]
 pub fn get_slot<'a>(state: &'a GameState, slot_ref: SlotRef) -> Option<&'a PokemonSlot> {
     let player = &state.players[slot_ref.player as usize];
     if slot_ref.slot == -1 {
@@ -244,6 +261,7 @@ pub fn get_slot<'a>(state: &'a GameState, slot_ref: SlotRef) -> Option<&'a Pokem
     }
 }
 
+#[inline]
 pub fn get_slot_mut<'a>(state: &'a mut GameState, slot_ref: SlotRef) -> Option<&'a mut PokemonSlot> {
     let player = &mut state.players[slot_ref.player as usize];
     if slot_ref.slot == -1 {

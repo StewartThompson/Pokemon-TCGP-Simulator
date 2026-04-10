@@ -156,6 +156,8 @@ pub fn execute_attack(
     // 6. Compute damage modifier.
     let ctx = EffectContext {
         acting_player: state.current_player,
+        source_ref: None,
+        target_ref: None,
         extra: HashMap::new(),
     };
     // Note: attack.effects uses the card::EffectKind placeholder type; the real
@@ -200,6 +202,8 @@ pub fn execute_attack(
     // 10. Apply side-effect handlers.
     let ctx_with_damage = EffectContext {
         acting_player: state.current_player,
+        source_ref: None,
+        target_ref: None,
         extra: {
             let mut m = modifier_result
                 .iter()

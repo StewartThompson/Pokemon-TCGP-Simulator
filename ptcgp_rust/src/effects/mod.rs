@@ -9,6 +9,10 @@ pub mod dispatch;
 #[derive(Clone, Debug)]
 pub struct EffectContext {
     pub acting_player: usize,
+    /// The slot that is the source of the effect (typically the attacking/acting Pokémon).
+    pub source_ref: Option<crate::actions::SlotRef>,
+    /// The slot that is the target of the effect (e.g. opponent active, or chosen bench slot).
+    pub target_ref: Option<crate::actions::SlotRef>,
     pub extra: HashMap<String, i32>,
 }
 
@@ -16,8 +20,20 @@ impl EffectContext {
     pub fn new(acting_player: usize) -> Self {
         Self {
             acting_player,
+            source_ref: None,
+            target_ref: None,
             extra: HashMap::new(),
         }
+    }
+
+    pub fn with_source(mut self, src: crate::actions::SlotRef) -> Self {
+        self.source_ref = Some(src);
+        self
+    }
+
+    pub fn with_target(mut self, tgt: crate::actions::SlotRef) -> Self {
+        self.target_ref = Some(tgt);
+        self
     }
 }
 

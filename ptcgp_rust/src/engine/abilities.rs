@@ -49,6 +49,8 @@ pub fn use_ability(state: &mut GameState, db: &CardDb, slot_ref: SlotRef) {
     // Build context.
     let ctx = EffectContext {
         acting_player: slot_ref.player as usize,
+        source_ref: None,
+        target_ref: None,
         extra: Default::default(),
     };
 

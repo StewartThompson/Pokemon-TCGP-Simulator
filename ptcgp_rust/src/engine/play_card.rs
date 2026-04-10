@@ -99,6 +99,8 @@ pub fn play_item(
     // card.trainer_effects uses the card::EffectKind placeholder — pass empty slice.
     let mut ctx = EffectContext {
         acting_player: current,
+        source_ref: None,
+        target_ref: None,
         extra: Default::default(),
     };
     if let Some(evo_idx) = extra_card_idx {
@@ -149,6 +151,8 @@ pub fn play_supporter(
     // Wave 6 will wire real effects::EffectKind dispatch for supporter effects.
     let mut ctx = EffectContext {
         acting_player: current,
+        source_ref: None,
+        target_ref: None,
         extra: Default::default(),
     };
     if let Some(t) = target {
@@ -195,6 +199,8 @@ pub fn attach_tool(
     // Apply passive tool effects. Wave 6 will wire real effects dispatch.
     let mut ctx = EffectContext {
         acting_player: current,
+        source_ref: None,
+        target_ref: None,
         extra: Default::default(),
     };
     ctx.extra.insert("target_player".to_string(), target.player as i32);

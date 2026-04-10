@@ -24,6 +24,12 @@ Each player brings one 20-card deck. A deck must contain:
 - At least **1 Basic Pokemon**
 - No more than **2 copies** of any card with the same name
 
+### Energy Types
+
+There are **8 real energy types** that exist in the game: Grass, Fire, Water, Lightning, Psychic, Fighting, Darkness, Metal. These are the only types that can appear in a player's Energy Zone or be attached to a Pokémon.
+
+**Colorless** is **not** a real energy type. It appears only as a cost symbol on attack cards, meaning "any energy type may pay this slot." No Colorless energy is ever generated or attached.
+
 ### Card Types
 
 | Type | Description |
@@ -125,7 +131,7 @@ After the active player's turn ends, status effects are resolved on their Active
 - Once per turn, swap your Active Pokemon with one from your Bench.
 - **Discard energy** equal to the Active Pokemon's Retreat Cost from that Pokemon.
 - A Pokemon with a Retreat Cost of **0 can always retreat** (no energy needs to be discarded), unless a specific card effect prevents it.
-- When paying the retreat cost, **you choose which attached energy to discard**.
+- When paying the retreat cost, **energy is discarded at random** — the player does not choose which energy is discarded.
 - The retreating Pokemon **keeps its current HP** and all remaining attached energy (minus what was spent on the Retreat Cost).
 - Retreating **removes all status effects** from the retreating Pokemon.
 - The Pokemon coming up from the Bench also **keeps its current HP and attached energy**.
@@ -234,7 +240,6 @@ When your Active Pokemon is knocked out:
 - The promoted Pokemon **may retreat or evolve** on that same turn if eligible.
 - If both players would reach 3 points simultaneously (e.g., both Actives knock each other out on the same attack), the game ends in a **tie**.
 - If a spread damage effect knocks out **multiple Bench Pokemon** at once, points are awarded for **each** Pokemon knocked out.
-- If a spread damage effect knocks out **multiple Bench Pokemon** at once, points are awarded for **each** Pokemon knocked out.
 
 ---
 
@@ -253,13 +258,6 @@ When your Active Pokemon is knocked out:
 - Only **1 Supporter** may be played per turn.
 - Supporters **can be played on turn 1**.
 - A Supporter that draws cards cannot be played if it would require drawing more cards than are left in the deck — you must be able to draw the full amount.
-
-### Items
-- **Unlimited Items** may be played per turn.
-
-### Supporters
-- Only **1 Supporter** may be played per turn.
-- A Supporter **cannot be played** if its draw effect would cause your hand to exceed 10 cards (e.g., a "draw 2" Supporter cannot be played with 9 cards in hand).
 
 ### Items
 - **Unlimited Items** may be played per turn.

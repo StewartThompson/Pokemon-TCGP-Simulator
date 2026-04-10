@@ -29,6 +29,7 @@ impl Element {
     }
 
     /// Index 0-7 for use in EnergyArray indexing
+    #[inline]
     pub fn idx(self) -> usize {
         self as usize
     }
@@ -66,6 +67,7 @@ impl CostSymbol {
     }
 
     /// Convert to Element. Returns None for Colorless.
+    #[inline]
     pub fn to_element(self) -> Option<Element> {
         match self {
             Self::Grass => Some(Element::Grass),
@@ -130,6 +132,7 @@ pub enum StatusEffect {
 }
 
 impl StatusEffect {
+    #[inline]
     pub fn bit(self) -> u8 {
         self as u8
     }
@@ -158,18 +161,22 @@ pub enum ActionKind {
 /// Fixed-size energy array indexed by Element::idx()
 pub type EnergyArray = [u8; 8];
 
+#[inline]
 pub fn energy_total(e: &EnergyArray) -> u8 {
     e.iter().sum()
 }
 
+#[inline]
 pub fn energy_get(e: &EnergyArray, el: Element) -> u8 {
     e[el.idx()]
 }
 
+#[inline]
 pub fn energy_add(e: &mut EnergyArray, el: Element, n: u8) {
     e[el.idx()] = e[el.idx()].saturating_add(n);
 }
 
+#[inline]
 pub fn energy_sub(e: &mut EnergyArray, el: Element, n: u8) {
     e[el.idx()] = e[el.idx()].saturating_sub(n);
 }

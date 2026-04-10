@@ -1,3 +1,4 @@
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 use std::sync::Arc;
 
@@ -17,11 +18,13 @@ pub mod batch;
 // ------------------------------------------------------------------ //
 
 /// Python-accessible wrapper for CardDb
+#[cfg(feature = "python")]
 #[pyclass(name = "CardDb")]
 struct PyCardDb {
     inner: Arc<crate::card::CardDb>,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl PyCardDb {
     #[staticmethod]
@@ -44,6 +47,7 @@ impl PyCardDb {
 // ------------------------------------------------------------------ //
 
 /// Python-accessible game result
+#[cfg(feature = "python")]
 #[pyclass(name = "GameResult")]
 #[derive(Clone)]
 struct PyGameResult {
@@ -57,6 +61,7 @@ struct PyGameResult {
     player1_points: u8,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl PyGameResult {
     fn __repr__(&self) -> String {
@@ -72,6 +77,7 @@ impl PyGameResult {
 // ------------------------------------------------------------------ //
 
 /// Python-accessible batch result
+#[cfg(feature = "python")]
 #[pyclass(name = "BatchResult")]
 #[derive(Clone)]
 struct PyBatchResult {
@@ -91,6 +97,7 @@ struct PyBatchResult {
     win_rate_player1: f64,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl PyBatchResult {
     fn __repr__(&self) -> String {
@@ -108,6 +115,7 @@ impl PyBatchResult {
 // Helper functions
 // ------------------------------------------------------------------ //
 
+#[cfg(feature = "python")]
 fn parse_elements(names: &[String]) -> PyResult<Vec<crate::types::Element>> {
     names
         .iter()
@@ -119,6 +127,7 @@ fn parse_elements(names: &[String]) -> PyResult<Vec<crate::types::Element>> {
         .collect()
 }
 
+#[cfg(feature = "python")]
 fn make_agent(name: &str) -> Box<dyn crate::agents::Agent> {
     match name {
         "heuristic" => Box::new(crate::agents::HeuristicAgent),
@@ -126,6 +135,7 @@ fn make_agent(name: &str) -> Box<dyn crate::agents::Agent> {
     }
 }
 
+#[cfg(feature = "python")]
 fn make_agent_arc(name: &str) -> Arc<dyn crate::agents::Agent> {
     match name {
         "heuristic" => Arc::new(crate::agents::HeuristicAgent),
@@ -137,6 +147,7 @@ fn make_agent_arc(name: &str) -> Arc<dyn crate::agents::Agent> {
 // Python functions
 // ------------------------------------------------------------------ //
 
+#[cfg(feature = "python")]
 #[pyfunction]
 fn run_game(
     py: Python<'_>,
@@ -175,6 +186,7 @@ fn run_game(
     })
 }
 
+#[cfg(feature = "python")]
 #[pyfunction]
 fn run_batch(
     py: Python<'_>,
@@ -214,6 +226,7 @@ fn run_batch(
 // Module registration
 // ------------------------------------------------------------------ //
 
+#[cfg(feature = "python")]
 #[pymodule]
 fn ptcgp_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyCardDb>()?;

@@ -114,7 +114,18 @@ fn run_main_loop(
     agent0: &dyn Agent,
     agent1: &dyn Agent,
 ) {
+    // Hard action-step cap — prevents infinite loops from engine bugs.
+    // Expected: ~10 actions/turn × 60 turns ≈ 600 steps. Allow 5×.
+    const MAX_STEPS: u32 = 3_000;
+    let mut steps: u32 = 0;
+
     loop {
+        steps += 1;
+        if steps > MAX_STEPS {
+            ko::check_winner(state);
+            break;
+        }
+
         // Exit if the game is already over
         if state.winner.is_some() || state.phase == GamePhase::GameOver {
             break;

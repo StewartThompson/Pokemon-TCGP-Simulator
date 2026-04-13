@@ -42,6 +42,9 @@ pub fn use_ability(state: &mut GameState, db: &CardDb, slot_ref: SlotRef) {
         ability.name
     );
 
+    // Clone effects before any mutable borrow of state.
+    let effects = ability.effects.clone();
+
     // Mark used.
     let slot = get_slot_mut(state, slot_ref).unwrap();
     slot.ability_used_this_turn = true;
@@ -49,14 +52,12 @@ pub fn use_ability(state: &mut GameState, db: &CardDb, slot_ref: SlotRef) {
     // Build context.
     let ctx = EffectContext {
         acting_player: slot_ref.player as usize,
-        source_ref: None,
+        source_ref: Some(slot_ref),
         target_ref: None,
         extra: Default::default(),
     };
 
-    // Wave 6 will wire real effects::EffectKind dispatch for ability effects.
-    // ability.effects are card::EffectKind placeholders — pass empty slice.
-    apply_effects(state, db, &[], &ctx);
+    apply_effects(state, db, &effects, &ctx);
 }
 
 // ------------------------------------------------------------------ //

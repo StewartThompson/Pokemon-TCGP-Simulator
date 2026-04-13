@@ -298,12 +298,20 @@ pub fn damage_specific_bench(
         }
     }
 
-    // Fallback: first available opponent bench slot.
+    // Fallback: target the bench Pokémon with the lowest current HP (most likely to KO).
+    // This maximises the value of abilities like Water Shuriken that freely pick any bench slot.
+    let mut best_slot: Option<usize> = None;
+    let mut best_hp = i16::MAX;
     for i in 0..state.players[opp_idx].bench.len() {
-        if state.players[opp_idx].bench[i].is_some() {
-            damage_slot(state, SlotRef::bench(opp_idx, i), amount);
-            return;
+        if let Some(ref slot) = state.players[opp_idx].bench[i] {
+            if slot.current_hp < best_hp {
+                best_hp = slot.current_hp;
+                best_slot = Some(i);
+            }
         }
+    }
+    if let Some(i) = best_slot {
+        damage_slot(state, SlotRef::bench(opp_idx, i), amount);
     }
 }
 

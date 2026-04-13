@@ -426,7 +426,7 @@
           "Grass",
           "Colorless"
         ],
-        "handler": "cant_attack_next_turn"
+        "handler": "coin_flip_attack_block_next_turn"
       }
     ],
     "retreatCost": 2,

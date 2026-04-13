@@ -2,10 +2,10 @@
 ///
 /// Ports `ptcgp/engine/legal_actions.py` to Rust.
 use crate::actions::{Action, SlotRef};
-use crate::card::CardDb;
+use crate::card::{Card, CardDb};
 use crate::effects::EffectKind;
 use crate::state::{GameState, PokemonSlot};
-use crate::types::{CardKind, CostSymbol, GamePhase, Stage, StatusEffect};
+use crate::types::{CardKind, CostSymbol, Element, GamePhase, Stage, StatusEffect};
 
 // ------------------------------------------------------------------ //
 // Helpers
@@ -122,6 +122,156 @@ fn rare_candy_actions(
 }
 
 // ------------------------------------------------------------------ //
+// Supporter action generation
+// ------------------------------------------------------------------ //
+
+/// Build legal actions for a single supporter card.
+///
+/// Returns an empty Vec if the card has no usable effect given the current state.
+/// Returns targeted actions (one per valid slot) for heal-type effects.
+fn collect_supporter_actions(
+    state: &GameState,
+    db: &CardDb,
+    cp: usize,
+    hand_index: usize,
+    card: &Card,
+) -> Vec<Action> {
+    if card.trainer_effects.is_empty() {
+        return vec![];
+    }
+
+    let opp = 1 - cp;
+
+    for effect in &card.trainer_effects {
+        match effect {
+            // --- Move energy from bench to active (Dawn) ---
+            EffectKind::MoveBenchEnergyToActive => {
+                // Only playable if active exists and at least one benched Pokemon
+                // has energy to move.
+                let active_exists = state.players[cp].active.is_some();
+                let bench_has_energy = state.players[cp].bench.iter().flatten()
+                    .any(|s| s.energy.iter().sum::<u8>() > 0);
+                if !active_exists || !bench_has_energy {
+                    return vec![];
+                }
+                return vec![Action::play_item(hand_index, None)];
+            }
+
+            // --- Switch opponent's active with bench ---
+            EffectKind::SwitchOpponentActive
+            | EffectKind::SwitchOpponentBasicToActive
+            | EffectKind::CoinFlipBounceOpponent => {
+                if !state.players[opp].bench.iter().any(|s| s.is_some()) {
+                    return vec![];
+                }
+                return vec![Action::play_item(hand_index, None)];
+            }
+
+            EffectKind::SwitchOpponentDamagedToActive => {
+                let has_damaged_bench = state.players[opp]
+                    .bench.iter().flatten()
+                    .any(|s| s.current_hp < s.max_hp);
+                if !has_damaged_bench {
+                    return vec![];
+                }
+                return vec![Action::play_item(hand_index, None)];
+            }
+
+            // --- Heal target (any of own Pokemon) ---
+            EffectKind::HealTarget { .. } | EffectKind::HealAndCureStatus { .. } => {
+                return heal_target_actions(state, db, cp, hand_index, None, None);
+            }
+
+            // --- Heal own Grass Pokemon ---
+            EffectKind::HealGrassTarget { .. } => {
+                return heal_target_actions(state, db, cp, hand_index, Some(Element::Grass), None);
+            }
+
+            // --- Heal own Water Pokemon ---
+            EffectKind::HealWaterPokemon { .. } => {
+                return heal_target_actions(state, db, cp, hand_index, Some(Element::Water), None);
+            }
+
+            // --- Heal own Stage 2 Pokemon ---
+            EffectKind::HealStage2Target { .. } => {
+                return heal_target_actions(state, db, cp, hand_index, None, Some(Stage::Stage2));
+            }
+
+            // --- Heal all own Pokemon (Irida etc.) ---
+            EffectKind::HealAllOwn { .. } => {
+                let any_damaged = has_any_damaged(state, cp);
+                if !any_damaged {
+                    return vec![];
+                }
+                return vec![Action::play_item(hand_index, None)];
+            }
+
+            // --- Heal own active only ---
+            EffectKind::HealActive { .. } | EffectKind::HealSelf { .. } => {
+                if let Some(ref active) = state.players[cp].active {
+                    if active.current_hp < active.max_hp {
+                        return vec![Action::play_item(hand_index, None)];
+                    }
+                }
+                return vec![];
+            }
+
+            _ => {} // Non-blocking effect; continue scanning
+        }
+    }
+
+    // No blocking condition found — always playable.
+    vec![Action::play_item(hand_index, None)]
+}
+
+/// Generate one play_item action per damaged own Pokémon that optionally matches
+/// a required `element` type and/or `stage`.  Returns empty if no valid target.
+fn heal_target_actions(
+    state: &GameState,
+    db: &CardDb,
+    cp: usize,
+    hand_index: usize,
+    required_element: Option<Element>,
+    required_stage: Option<Stage>,
+) -> Vec<Action> {
+    let player = &state.players[cp];
+    let mut out = Vec::new();
+
+    let slot_matches = |slot: &PokemonSlot| -> bool {
+        if slot.current_hp >= slot.max_hp { return false; }
+        let card = db.get_by_idx(slot.card_idx);
+        if let Some(el) = required_element {
+            if card.element != Some(el) { return false; }
+        }
+        if let Some(st) = required_stage {
+            if card.stage != Some(st) { return false; }
+        }
+        true
+    };
+
+    if let Some(ref active) = player.active {
+        if slot_matches(active) {
+            out.push(Action::play_item(hand_index, Some(SlotRef::active(cp))));
+        }
+    }
+    for j in 0..3 {
+        if let Some(ref slot) = player.bench[j] {
+            if slot_matches(slot) {
+                out.push(Action::play_item(hand_index, Some(SlotRef::bench(cp, j))));
+            }
+        }
+    }
+    out
+}
+
+/// Returns true if any of the acting player's Pokemon has less than max HP.
+fn has_any_damaged(state: &GameState, player_idx: usize) -> bool {
+    let p = &state.players[player_idx];
+    p.active.as_ref().map(|s| s.current_hp < s.max_hp).unwrap_or(false)
+        || p.bench.iter().flatten().any(|s| s.current_hp < s.max_hp)
+}
+
+// ------------------------------------------------------------------ //
 // Public API
 // ------------------------------------------------------------------ //
 
@@ -152,6 +302,9 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
             }
 
             CardKind::Item => {
+                if player.cant_play_items_this_turn {
+                    continue;
+                }
                 if card.name == "Rare Candy" {
                     for rc in rare_candy_actions(state, db, i) {
                         actions.push(rc);
@@ -206,8 +359,9 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                 if opponent_blocks_supporters(state, db) {
                     continue;
                 }
-                // One action per supporter (no sub-target at this layer).
-                actions.push(Action::play_item(i, None));
+                // Generate targeted/validated actions for this supporter.
+                let supporter_actions = collect_supporter_actions(state, db, cp, i, card);
+                actions.extend(supporter_actions);
             }
 
             CardKind::Tool => {
@@ -246,7 +400,8 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
     // ------------------------------------------------------------------ //
     // ATTACH_ENERGY
     // ------------------------------------------------------------------ //
-    if player.energy_available.is_some() && !player.has_attached_energy {
+    if player.energy_available.is_some() && !player.has_attached_energy
+        && !player.cant_attach_energy_this_turn {
         if player.active.is_some() {
             actions.push(Action::attach_energy(SlotRef::active(cp)));
         }
@@ -340,8 +495,21 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
             {
                 let active_card = db.get_by_idx(active.card_idx);
                 let base_cost = active_card.retreat_cost as i16;
+                // Tool passive: check for retreat cost reduction (e.g. Inflatable Boat).
+                let tool_reduction: i16 = active.tool_idx
+                    .and_then(|tidx| db.try_get_by_idx(tidx))
+                    .map(|tool| {
+                        tool.trainer_effects.iter().find_map(|e| {
+                            if let EffectKind::PassiveBenchRetreatReduction { amount } = e {
+                                Some(*amount)
+                            } else {
+                                None
+                            }
+                        }).unwrap_or(0)
+                    })
+                    .unwrap_or(0);
                 let effective_cost =
-                    (base_cost + player.retreat_cost_modifier as i16).max(0) as u8;
+                    (base_cost + player.retreat_cost_modifier as i16 - tool_reduction).max(0) as u8;
                 if active.total_energy() >= effective_cost {
                     // Must have at least one bench Pokemon to swap in.
                     for j in 0..3 {
@@ -355,18 +523,48 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
     }
 
     // ------------------------------------------------------------------ //
-    // ATTACK  (not on turn 0 or 1)
+    // ATTACK  (only the first player's very first turn is blocked)
     // ------------------------------------------------------------------ //
-    if state.turn_number >= 2 {
+    if state.turn_number >= 1 {
         let player = state.current();
         if let Some(ref active) = player.active {
             if !active.cant_attack_next_turn
                 && !active.has_status(StatusEffect::Paralyzed)
                 && !active.has_status(StatusEffect::Asleep)
             {
+                // Check if opponent's active has PassiveOpponentAttackCostIncrease
+                // (e.g. Goomy's Sticky Membrane: opponent attacks cost +1 Colorless).
+                let extra_colorless: u8 = {
+                    let opp_idx = (1 - cp) as usize;
+                    state.players[opp_idx].active.as_ref()
+                        .and_then(|s| {
+                            let card = db.get_by_idx(s.card_idx);
+                            card.ability.as_ref().and_then(|ab| {
+                                ab.effects.iter().find_map(|e| {
+                                    if let EffectKind::PassiveOpponentAttackCostIncrease { amount } = e {
+                                        Some(*amount as u8)
+                                    } else {
+                                        None
+                                    }
+                                })
+                            })
+                        })
+                        .unwrap_or(0)
+                };
+
                 let active_card = db.get_by_idx(active.card_idx);
                 for (i, attack) in active_card.attacks.iter().enumerate() {
-                    if can_pay_cost(active, &attack.cost) {
+                    let can_pay = if extra_colorless > 0 {
+                        // Build augmented cost with extra Colorless symbols.
+                        let mut augmented = attack.cost.clone();
+                        for _ in 0..extra_colorless {
+                            augmented.push(CostSymbol::Colorless);
+                        }
+                        can_pay_cost(active, &augmented)
+                    } else {
+                        can_pay_cost(active, &attack.cost)
+                    };
+                    if can_pay {
                         // Sub-target targeting is complex; emit a single
                         // action with target=None (simplified, to be refined).
                         actions.push(Action::attack(i, None));

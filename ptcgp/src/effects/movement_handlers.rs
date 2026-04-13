@@ -20,10 +20,13 @@ fn get_opponent(ctx: &EffectContext) -> usize {
 /// Pokémon being forced out of the Active Spot, matching PTCGP switching rules.
 fn swap_active_bench(state: &mut GameState, player: usize, bench_idx: usize) {
     // Clear volatile statuses from the currently active pokemon before it moves.
+    // Also clear cant_attack_next_turn — that debuff is tied to the active
+    // position, so leaving it (via any switch effect) ends the effect.
     if let Some(ref mut slot) = state.players[player].active {
         slot.remove_status(StatusEffect::Paralyzed);
         slot.remove_status(StatusEffect::Asleep);
         slot.remove_status(StatusEffect::Confused);
+        slot.cant_attack_next_turn = false;
     }
 
     let bench_slot = state.players[player].bench[bench_idx].take();
@@ -123,6 +126,37 @@ pub fn switch_opponent_basic_to_active(state: &mut GameState, ctx: &EffectContex
     if let Some(&idx) = basic_bench.choose(&mut state.rng) {
         swap_active_bench(state, opp, idx);
     }
+}
+
+/// Force one of the opponent's benched Pokémon **that has damage** into their Active Spot.
+/// Picks the most-damaged one; falls back to any benched Pokémon if none are damaged.
+/// Maps to Python / card text for Cyrus supporter.
+pub fn switch_opponent_damaged_to_active(state: &mut GameState, ctx: &EffectContext) {
+    let opp = get_opponent(ctx);
+
+    // Collect bench indices of damaged bench Pokémon (HP < max_hp).
+    let damaged: Vec<usize> = state.players[opp]
+        .bench
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| {
+            let slot = s.as_ref()?;
+            if slot.current_hp < slot.max_hp { Some(i) } else { None }
+        })
+        .collect();
+
+    if damaged.is_empty() {
+        // No damaged bench Pokémon — no switch occurs.
+        return;
+    }
+
+    // Pick the most-damaged (lowest current_hp relative to max_hp).
+    let best_idx = *damaged.iter().max_by_key(|&&i| {
+        let slot = state.players[opp].bench[i].as_ref().unwrap();
+        slot.max_hp - slot.current_hp
+    }).unwrap();
+
+    swap_active_bench(state, opp, best_idx);
 }
 
 /// If this Pokémon is on your bench, switch it with your Active.
@@ -397,5 +431,47 @@ mod tests {
             }
         }
         assert!(shuffled, "Expected at least one shuffle in 200 trials");
+    }
+
+    #[test]
+    fn switch_opponent_damaged_to_active_picks_most_damaged() {
+        let mut state = GameState::new(42);
+        state.players[0].active = Some(PokemonSlot::new(0, 100));
+        // Opponent: active + two bench pokemon
+        state.players[1].active = Some(PokemonSlot::new(10, 100));
+        // Bench 0: slightly damaged (20 damage taken)
+        let mut bench0 = PokemonSlot::new(11, 80);
+        bench0.current_hp = 60; // 20 damage
+        state.players[1].bench[0] = Some(bench0);
+        // Bench 1: heavily damaged (50 damage taken)
+        let mut bench1 = PokemonSlot::new(12, 100);
+        bench1.current_hp = 50; // 50 damage
+        state.players[1].bench[1] = Some(bench1);
+
+        let ctx = EffectContext::new(0);
+        switch_opponent_damaged_to_active(&mut state, &ctx);
+
+        // Most damaged (bench1, 50 damage) should be promoted to active.
+        assert_eq!(state.players[1].active.as_ref().unwrap().card_idx, 12);
+        // Old active goes to its bench slot (bench[1]).
+        assert_eq!(state.players[1].bench[1].as_ref().unwrap().card_idx, 10);
+        // Bench 0 is untouched.
+        assert_eq!(state.players[1].bench[0].as_ref().unwrap().card_idx, 11);
+    }
+
+    #[test]
+    fn switch_opponent_damaged_to_active_noop_when_none_damaged() {
+        let mut state = GameState::new(1);
+        state.players[0].active = Some(PokemonSlot::new(0, 100));
+        state.players[1].active = Some(PokemonSlot::new(10, 100));
+        // Bench at full HP.
+        state.players[1].bench[0] = Some(PokemonSlot::new(11, 80));
+
+        let ctx = EffectContext::new(0);
+        switch_opponent_damaged_to_active(&mut state, &ctx);
+
+        // No switch should have occurred.
+        assert_eq!(state.players[1].active.as_ref().unwrap().card_idx, 10);
+        assert_eq!(state.players[1].bench[0].as_ref().unwrap().card_idx, 11);
     }
 }

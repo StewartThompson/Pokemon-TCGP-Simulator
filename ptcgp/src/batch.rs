@@ -94,6 +94,7 @@ pub fn run_batch(
                 agent0.as_ref(),
                 agent1.as_ref(),
                 base_seed.wrapping_add(i as u64),
+                None, // batch simulation — no narration
             )
         })
         .collect();

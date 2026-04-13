@@ -81,16 +81,9 @@ pub fn heal_self(state: &mut GameState, amount: i16, ctx: &EffectContext) {
     heal_slot(state, SlotRef::active(p), amount);
 }
 
-/// Heal the target slot (from ctx.extra["target_slot"]) or opponent's active.
+/// Heal the target slot (from ctx.extra["target_slot"]) or the acting player's active.
 pub fn heal_target(state: &mut GameState, amount: i16, ctx: &EffectContext) {
     let target = if let Some(&raw) = ctx.extra.get("target_slot") {
-        // raw encoding: player * 10 + slot_index, with -1 active encoded as -1 offset
-        // Use the same convention: player=raw/10, slot=raw%10-1 maps active as -1
-        // Simpler: encode as player*4 + (slot+1) where slot=-1..2 => 0..3
-        // Check what encoding is used. Since EffectContext.extra is HashMap<String, i32>,
-        // we decode: if raw < 0, it's p=0 active; otherwise player = raw / 10, slot = raw % 10 - 1
-        // Actually let's use a simple convention: negative means p0 active, etc.
-        // The safest approach: if target_slot key exists, decode as SlotRef directly.
         // Encoding: player * 10 + (slot + 1), so active(p) = p*10+0, bench(p,0)=p*10+1, etc.
         let player = (raw / 10) as usize;
         let slot_enc = raw % 10;
@@ -100,9 +93,8 @@ pub fn heal_target(state: &mut GameState, amount: i16, ctx: &EffectContext) {
             SlotRef::bench(player, (slot_enc - 1) as usize)
         }
     } else {
-        // Default: opponent's active
-        let opp = 1 - ctx.acting_player;
-        SlotRef::active(opp)
+        // Default: acting player's active (Potion, Pokémon Center Lady, etc.)
+        SlotRef::active(ctx.acting_player)
     };
     heal_slot(state, target, amount);
 }
@@ -125,13 +117,32 @@ pub fn heal_all_own(state: &mut GameState, amount: i16, ctx: &EffectContext) {
     }
 }
 
-/// Heal target only if target card's element == Grass.
+/// Decode a target slot from ctx.extra["target_slot"] or fall back to acting player's active.
+fn decode_target(ctx: &EffectContext) -> SlotRef {
+    if let Some(&raw) = ctx.extra.get("target_slot") {
+        let player = (raw / 10) as usize;
+        let slot_enc = raw % 10;
+        if slot_enc == 0 {
+            SlotRef::active(player)
+        } else {
+            SlotRef::bench(player, (slot_enc - 1) as usize)
+        }
+    } else {
+        SlotRef::active(ctx.acting_player)
+    }
+}
+
+/// Heal one of the acting player's own Pokémon if it is a Grass type.
+/// Target is taken from ctx.extra["target_slot"] (set by legal-action generation) or
+/// defaults to the acting player's active slot.
 pub fn heal_grass_target(state: &mut GameState, db: &CardDb, amount: i16, ctx: &EffectContext) {
-    let opp = 1 - ctx.acting_player;
-    let target = SlotRef::active(opp);
+    let target = decode_target(ctx);
+    // Safety check: target must belong to acting player.
+    if target.player as usize != ctx.acting_player {
+        return;
+    }
     let should_heal = if let Some(slot) = crate::state::get_slot(state, target) {
-        let card = db.get_by_idx(slot.card_idx);
-        card.element == Some(Element::Grass)
+        db.get_by_idx(slot.card_idx).element == Some(Element::Grass)
     } else {
         false
     };
@@ -140,13 +151,14 @@ pub fn heal_grass_target(state: &mut GameState, db: &CardDb, amount: i16, ctx: &
     }
 }
 
-/// Heal target only if target card's element == Water.
+/// Heal one of the acting player's own Pokémon if it is a Water type.
 pub fn heal_water_pokemon(state: &mut GameState, db: &CardDb, amount: i16, ctx: &EffectContext) {
-    let opp = 1 - ctx.acting_player;
-    let target = SlotRef::active(opp);
+    let target = decode_target(ctx);
+    if target.player as usize != ctx.acting_player {
+        return;
+    }
     let should_heal = if let Some(slot) = crate::state::get_slot(state, target) {
-        let card = db.get_by_idx(slot.card_idx);
-        card.element == Some(Element::Water)
+        db.get_by_idx(slot.card_idx).element == Some(Element::Water)
     } else {
         false
     };
@@ -155,13 +167,14 @@ pub fn heal_water_pokemon(state: &mut GameState, db: &CardDb, amount: i16, ctx: 
     }
 }
 
-/// Heal target only if target card's stage == Stage2.
+/// Heal one of the acting player's own Pokémon if it is Stage 2.
 pub fn heal_stage2_target(state: &mut GameState, db: &CardDb, amount: i16, ctx: &EffectContext) {
-    let opp = 1 - ctx.acting_player;
-    let target = SlotRef::active(opp);
+    let target = decode_target(ctx);
+    if target.player as usize != ctx.acting_player {
+        return;
+    }
     let should_heal = if let Some(slot) = crate::state::get_slot(state, target) {
-        let card = db.get_by_idx(slot.card_idx);
-        card.stage == Some(Stage::Stage2)
+        db.get_by_idx(slot.card_idx).stage == Some(Stage::Stage2)
     } else {
         false
     };
@@ -170,10 +183,14 @@ pub fn heal_stage2_target(state: &mut GameState, db: &CardDb, amount: i16, ctx: 
     }
 }
 
-/// Heal acting player's active Pokemon and clear all status effects.
+/// Heal acting player's Pokémon (from target_slot or active) and clear all status effects.
 pub fn heal_and_cure_status(state: &mut GameState, amount: i16, ctx: &EffectContext) {
-    let p = ctx.acting_player;
-    if let Some(slot) = state.players[p].active.as_mut() {
+    let target = decode_target(ctx);
+    // Safety: only heal own Pokémon.
+    if target.player as usize != ctx.acting_player {
+        return;
+    }
+    if let Some(slot) = crate::state::get_slot_mut(state, target) {
         slot.current_hp = (slot.current_hp + amount).min(slot.max_hp);
         slot.status = 0;
     }

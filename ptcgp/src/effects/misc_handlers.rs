@@ -139,17 +139,15 @@ pub fn opponent_no_supporter_next_turn(state: &mut GameState, ctx: &EffectContex
 }
 
 /// Block the opponent from playing Item cards on their next turn.
-/// TODO: PlayerState does not yet have cant_play_items_incoming; no-op until added.
 pub fn opponent_no_items_next_turn(state: &mut GameState, ctx: &EffectContext) {
-    // TODO: add `cant_play_items_incoming: bool` to PlayerState and set it here.
-    let _ = (state, ctx);
+    let opp = 1 - ctx.acting_player;
+    state.players[opp].cant_play_items_incoming = true;
 }
 
 /// Block the opponent from taking Energy from the Energy Zone on their next turn.
-/// TODO: PlayerState does not yet have cant_take_energy_incoming; no-op until added.
 pub fn opponent_no_energy_next_turn(state: &mut GameState, ctx: &EffectContext) {
-    // TODO: add `cant_take_energy_incoming: bool` to PlayerState and set it here.
-    let _ = (state, ctx);
+    let opp = 1 - ctx.acting_player;
+    state.players[opp].cant_attach_energy_incoming = true;
 }
 
 /// Raise the opponent's retreat / attack costs by amount next turn.
@@ -204,11 +202,60 @@ pub fn reduce_retreat_cost(state: &mut GameState, amount: i8, ctx: &EffectContex
 // Copy attack — complex, no-op for now
 // ------------------------------------------------------------------ //
 
-/// Mew / Mewtwo copy: re-dispatch opponent's attack.
-/// TODO: properly implement by re-entering execute_attack with the chosen opponent attack.
+/// Mew / Mewtwo copy: copy the opponent's highest-damage attack and deal that damage.
+/// Applies weakness on the defender and the standard incoming damage reduction,
+/// then deducts HP from the opponent's active Pokémon.
 pub fn copy_opponent_attack(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
-    // TODO: select opponent attack and re-dispatch through execute_attack.
-    let _ = (state, db, ctx);
+    let p = ctx.acting_player;
+    let opp = 1 - p;
+
+    // Identify attacker and defender cards.
+    let attacker_card_idx = match state.players[p].active.as_ref() {
+        Some(s) => s.card_idx,
+        None => return,
+    };
+    let defender_card_idx = match state.players[opp].active.as_ref() {
+        Some(s) => s.card_idx,
+        None => return,
+    };
+
+    let attacker_card = db.get_by_idx(attacker_card_idx).clone();
+    let opp_card = db.get_by_idx(defender_card_idx).clone();
+
+    // Pick the opponent's highest base-damage attack.
+    let best_damage = opp_card.attacks.iter().map(|a| a.damage).max().unwrap_or(0);
+    if best_damage == 0 {
+        return;
+    }
+
+    let mut damage = best_damage;
+
+    // Apply acting player's damage bonus aura (e.g. Giovanni).
+    damage += state.players[p].attack_damage_bonus as i16;
+
+    // Weakness: does the attacker's type match the defender's weakness?
+    if attacker_card.element.is_some()
+        && opp_card.weakness == attacker_card.element
+    {
+        damage += crate::constants::WEAKNESS_BONUS;
+    }
+
+    // Defender's incoming damage reduction (Giant Cape, Rocky Helmet reduction, etc.).
+    let reduction = state.players[opp].active
+        .as_ref()
+        .map(|s| s.incoming_damage_reduction as i16)
+        .unwrap_or(0);
+    damage = (damage - reduction).max(0);
+
+    // Check prevent_damage flag.
+    if state.players[opp].active.as_ref().map(|s| s.prevent_damage_next_turn).unwrap_or(false) {
+        return;
+    }
+
+    // Apply damage.
+    if let Some(slot) = state.players[opp].active.as_mut() {
+        slot.current_hp = (slot.current_hp - damage).max(0);
+    }
 }
 
 // ------------------------------------------------------------------ //

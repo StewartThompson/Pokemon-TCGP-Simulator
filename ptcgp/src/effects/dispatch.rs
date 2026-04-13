@@ -88,6 +88,9 @@ pub fn apply_effect(
             draw_handlers::shuffle_hand_draw_opponent_count(state, ctx)
         }
         EffectKind::DiscardToDraw { count } => draw_handlers::discard_to_draw(state, *count, ctx),
+        EffectKind::MaintenanceShuffle { shuffle_count, draw_count } => {
+            draw_handlers::maintenance_shuffle(state, *shuffle_count, *draw_count, ctx)
+        }
         EffectKind::OpponentShuffleHandDraw { count } => {
             draw_handlers::opponent_shuffle_hand_draw(state, *count, ctx)
         }
@@ -102,6 +105,9 @@ pub fn apply_effect(
         }
         EffectKind::SearchDeckNamed { name } => {
             draw_handlers::search_deck_named(state, db, name, ctx)
+        }
+        EffectKind::SearchDeckMultiNamed { names } => {
+            draw_handlers::search_deck_multi_named(state, db, names, ctx)
         }
         EffectKind::SearchDeckGrassPokemon => {
             draw_handlers::search_deck_grass_pokemon(state, db, ctx)
@@ -131,48 +137,68 @@ pub fn apply_effect(
         EffectKind::DiscardRandomItemFromHand => {
             draw_handlers::discard_random_item_from_hand(state, db, ctx)
         }
-        EffectKind::DiscardTopDeck => {
-            energy_handlers::discard_top_deck(state, ctx, 1)
+        EffectKind::DiscardTopDeck { count } => {
+            energy_handlers::discard_top_deck(state, ctx, *count as usize)
         }
 
         // --- Energy effects ---
         EffectKind::AttachEnergyZoneSelf => {
-            // No element specified — default to acting player's energy zone element.
-            // Use Colorless as a no-op; real cards pass element via the parse handler.
-            // The EffectKind variant doesn't carry element, so we call with the
-            // zone element stored in state.
-            let element = state.players[ctx.acting_player].energy_available
+            // Use the deck's primary energy type so ability-based attachments
+            // (Gardevoir Psy Shadow, Baxcalibur Ice Maker, etc.) work even when
+            // energy_available has already been consumed by the manual attachment.
+            let element = state.players[ctx.acting_player].energy_types
+                .first().copied()
+                .or_else(|| state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
             energy_handlers::attach_energy_zone_self(state, ctx, element, 1);
         }
+        EffectKind::AttachEnergyZoneSelfN { count } => {
+            let element = state.players[ctx.acting_player].energy_types
+                .first().copied()
+                .or_else(|| state.players[ctx.acting_player].energy_available)
+                .unwrap_or(Element::Grass);
+            for _ in 0..*count {
+                energy_handlers::attach_energy_zone_self(state, ctx, element, 1);
+            }
+        }
         EffectKind::AttachEnergyZoneBench { count } => {
-            let element = state.players[ctx.acting_player].energy_available
+            let element = state.players[ctx.acting_player].energy_types
+                .first().copied()
+                .or_else(|| state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
             for _ in 0..*count {
                 energy_handlers::attach_energy_zone_bench(state, db, ctx, element, None);
             }
         }
         EffectKind::AttachEnergyZoneBenchBracket { count } => {
-            let element = state.players[ctx.acting_player].energy_available
+            let element = state.players[ctx.acting_player].energy_types
+                .first().copied()
+                .or_else(|| state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
             for _ in 0..*count {
                 energy_handlers::attach_energy_zone_bench(state, db, ctx, element, None);
             }
         }
         EffectKind::AttachEnergyZoneBenchAnyBracket { count } => {
-            let element = state.players[ctx.acting_player].energy_available
+            let element = state.players[ctx.acting_player].energy_types
+                .first().copied()
+                .or_else(|| state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
             for _ in 0..*count {
                 energy_handlers::attach_energy_zone_bench(state, db, ctx, element, None);
             }
         }
         EffectKind::AttachEnergyZoneSelfBracket => {
-            let element = state.players[ctx.acting_player].energy_available
+            let element = state.players[ctx.acting_player].energy_types
+                .first().copied()
+                .or_else(|| state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
             energy_handlers::attach_energy_zone_self(state, ctx, element, 1);
         }
         EffectKind::AttachEnergyZoneNamed { name } => {
-            let element = state.players[ctx.acting_player].energy_available
+            let element = state.players[ctx.acting_player].energy_types
+                .first().copied()
+                .or_else(|| state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
             energy_handlers::attach_energy_zone_named(state, db, ctx, element, &[name.as_str()]);
         }
@@ -203,7 +229,10 @@ pub fn apply_effect(
             energy_handlers::ability_attach_energy_end_turn(state, ctx)
         }
         EffectKind::CoinFlipUntilTailsAttachEnergy => {
-            let element = state.players[ctx.acting_player].energy_available
+            // Use the deck's primary energy type (same fix as AttachEnergyZoneSelf).
+            let element = state.players[ctx.acting_player].energy_types
+                .first().copied()
+                .or_else(|| state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Water);
             energy_handlers::coin_flip_until_tails_attach_energy(state, ctx, element);
         }
@@ -223,15 +252,23 @@ pub fn apply_effect(
                 .unwrap_or(Element::Grass);
             energy_handlers::first_turn_energy_attach(state, ctx, element);
         }
-        EffectKind::DiscardEnergySelf => {
-            let element = state.players[ctx.acting_player].energy_available
-                .unwrap_or(Element::Grass);
-            energy_handlers::discard_energy_self(state, ctx, element);
+        EffectKind::DiscardEnergySelf { energy_type } => {
+            // "Random" (or unrecognised) → discard a random energy from self.
+            // Otherwise parse the element name and discard that specific type.
+            match Element::from_str(energy_type) {
+                Some(el) => energy_handlers::discard_energy_self(state, ctx, el),
+                None     => energy_handlers::discard_random_energy_self(state, ctx),
+            }
         }
-        EffectKind::DiscardNEnergySelf { count } => {
-            let element = state.players[ctx.acting_player].energy_available
-                .unwrap_or(Element::Grass);
-            energy_handlers::discard_n_energy_self(state, ctx, element, *count);
+        EffectKind::DiscardNEnergySelf { count, energy_type } => {
+            match Element::from_str(energy_type) {
+                Some(el) => energy_handlers::discard_n_energy_self(state, ctx, el, *count),
+                None     => {
+                    for _ in 0..*count {
+                        energy_handlers::discard_random_energy_self(state, ctx);
+                    }
+                }
+            }
         }
         EffectKind::DiscardAllEnergySelf => {
             energy_handlers::discard_all_energy_self(state, ctx)
@@ -254,10 +291,12 @@ pub fn apply_effect(
             energy_handlers::discard_random_energy_all_pokemon(state, ctx)
         }
         EffectKind::CoinFlipUntilTailsDiscardEnergy => {
-            // Discard energy until tails — simplified to discard once
             let element = state.players[ctx.acting_player].energy_available
                 .unwrap_or(Element::Grass);
-            energy_handlers::discard_energy_self(state, ctx, element);
+            energy_handlers::coin_flip_until_tails_discard_energy(state, ctx, element);
+        }
+        EffectKind::CoinFlipUntilTailsDiscardRandomEnergyOpponent => {
+            energy_handlers::coin_flip_until_tails_discard_random_energy_opponent(state, ctx);
         }
         EffectKind::MoveBenchEnergyToActive => {
             energy_handlers::move_bench_energy_to_active(state, ctx)
@@ -324,7 +363,8 @@ pub fn apply_effect(
         EffectKind::BonusIfPlayedSupporter { bonus } => { let _ = bonus; }
         EffectKind::BonusIfJustPromoted { bonus } => { let _ = bonus; }
         EffectKind::BonusIfOpponentMoreHp { bonus } => { let _ = bonus; }
-        EffectKind::BonusIfOpponentHasStatus { bonus } => { let _ = bonus; }
+        EffectKind::BonusIfOpponentHasStatus { bonus } => { let _ = bonus;
+        }
         EffectKind::BonusEqualToDamageTaken => {}
         EffectKind::BonusIfExtraEnergy { threshold, bonus, energy_type } => {
             let _ = (threshold, bonus, energy_type);
@@ -353,8 +393,7 @@ pub fn apply_effect(
             movement_handlers::switch_opponent_basic_to_active(state, ctx, db)
         }
         EffectKind::SwitchOpponentDamagedToActive => {
-            // Switch the opponent's most-damaged bench Pokémon to active
-            movement_handlers::switch_opponent_active_random(state, ctx)
+            movement_handlers::switch_opponent_damaged_to_active(state, ctx)
         }
         EffectKind::SwitchUltraBeast => movement_handlers::switch_ultra_beast(state, ctx),
         EffectKind::AbilityBenchToActive => movement_handlers::ability_bench_to_active(state, ctx),
@@ -438,7 +477,13 @@ pub fn apply_effect(
             }
         }
         EffectKind::SelfDamage { amount } => {
-            damage_mod_handlers::self_damage(state, *amount, ctx.source_ref, ctx)
+            // Head Smash and similar: self-damage only triggers when the attack KO'd the opponent.
+            // "opponent_ko" is 1 if the attack KO'd the defender, 0 otherwise. If not set (non-attack
+            // context), default to 0 (don't self-damage without a KO condition).
+            let did_ko = ctx.extra.get("opponent_ko").copied().unwrap_or(0) != 0;
+            if did_ko {
+                damage_mod_handlers::self_damage(state, *amount, ctx.source_ref, ctx)
+            }
         }
         EffectKind::SelfDamageOnCoinFlipResult { amount } => {
             use rand::Rng;
@@ -517,20 +562,10 @@ pub fn apply_effect(
         }
         EffectKind::CopyOpponentAttack => misc_handlers::copy_opponent_attack(state, db, ctx),
         EffectKind::CoinFlipShuffleOpponentCard => {
-            // Coin flip: on heads, shuffle one opponent card into deck
-            use rand::Rng;
-            if state.rng.gen::<f64>() < 0.5 {
-                draw_handlers::discard_random_card_opponent(state, ctx);
-            }
+            misc_handlers::coin_flip_shuffle_opponent_card(state, ctx)
         }
         EffectKind::MultiCoinShuffleOpponentCards { count } => {
-            use rand::Rng;
-            let heads: u8 = (0..*count)
-                .filter(|_| state.rng.gen::<f64>() < 0.5)
-                .count() as u8;
-            for _ in 0..heads {
-                draw_handlers::discard_random_card_opponent(state, ctx);
-            }
+            misc_handlers::multi_coin_shuffle_opponent_cards(state, *count, ctx)
         }
         EffectKind::CantAttackNextTurn => misc_handlers::cant_attack_next_turn(state, ctx),
         EffectKind::SelfCantAttackNextTurn => misc_handlers::self_cant_attack_next_turn(state, ctx),
@@ -606,20 +641,163 @@ pub fn apply_effect(
 /// Returns (final_damage, skip_damage, extra_map).
 /// Coin-flip damage variants are resolved here; other bonuses accumulate.
 pub fn compute_damage_modifier(
-    state: &GameState,
+    state: &mut GameState,
     db: &CardDb,
     base_damage: i16,
     effects: &[EffectKind],
     ctx: &EffectContext,
 ) -> (i16, bool, HashMap<String, i32>) {
-    let _ = (state, db, ctx);
+    use rand::Rng;
+    let _ = db;
     let mut bonus: i16 = 0;
+    let mut base_replaced: Option<i16> = None;
+
     for effect in effects {
         match effect {
-            // Coin-flip variants are handled at attack execution time; skip here.
-            EffectKind::CoinFlipBonusDamage { .. } => {}
+            EffectKind::CoinFlipBonusDamage { amount } => {
+                let heads = state.rng.gen::<bool>();
+                if heads { bonus += *amount; }
+                state.coin_flip_log.push(
+                    if heads { format!("🪙 Heads! +{}dmg", amount) }
+                    else     { "🪙 Tails! No bonus damage".to_string() }
+                );
+            }
+            EffectKind::MultiCoinPerEnergyDamage { per } => {
+                let energy_count = state.players[ctx.acting_player].active
+                    .as_ref()
+                    .map(|s| s.total_energy())
+                    .unwrap_or(0);
+                let mut total: i16 = 0;
+                let mut results: Vec<&str> = Vec::new();
+                for _ in 0..energy_count {
+                    let h = state.rng.gen::<bool>();
+                    if h { total += *per; results.push("H"); } else { results.push("T"); }
+                }
+                if !results.is_empty() {
+                    state.coin_flip_log.push(format!(
+                        "🪙 {} flip{}: {}  → {}dmg",
+                        energy_count, if energy_count == 1 { "" } else { "s" },
+                        results.join(" "), total
+                    ));
+                }
+                base_replaced = Some(total);
+            }
+            EffectKind::BonusIfOpponentPoisoned { bonus: b } => {
+                let opp = 1 - ctx.acting_player;
+                if let Some(ref active) = state.players[opp].active {
+                    if active.has_status(crate::types::StatusEffect::Poisoned) {
+                        bonus += *b;
+                    }
+                }
+            }
+            EffectKind::BonusIfOpponentHasStatus { bonus: b } => {
+                let opp = 1 - ctx.acting_player;
+                if let Some(ref active) = state.players[opp].active {
+                    if active.has_any_status() { bonus += *b; }
+                }
+            }
+            EffectKind::BonusPerBench { per } => {
+                // Count acting player's own bench (not active).
+                let p = ctx.acting_player;
+                let count = state.players[p].bench.iter().filter(|s| s.is_some()).count() as i16;
+                bonus += per * count;
+            }
+            EffectKind::BonusPerOpponentBench { per } => {
+                let opp = 1 - ctx.acting_player;
+                let count = state.players[opp].bench.iter().filter(|s| s.is_some()).count() as i16;
+                bonus += per * count;
+            }
+            EffectKind::BonusIfOpponentDamaged { bonus: b } => {
+                let opp = 1 - ctx.acting_player;
+                if let Some(ref active) = state.players[opp].active {
+                    if active.current_hp < active.max_hp { bonus += *b; }
+                }
+            }
+            EffectKind::BonusIfOpponentEx { bonus: b } => {
+                let opp = 1 - ctx.acting_player;
+                if let Some(ref active) = state.players[opp].active {
+                    if db.get_by_idx(active.card_idx).is_ex { bonus += *b; }
+                }
+            }
+            EffectKind::BonusIfOpponentBasic { bonus: b } => {
+                let opp = 1 - ctx.acting_player;
+                if let Some(ref active) = state.players[opp].active {
+                    if db.get_by_idx(active.card_idx).stage == Some(crate::types::Stage::Basic) {
+                        bonus += *b;
+                    }
+                }
+            }
+            EffectKind::BonusIfOpponentElement { bonus: b, element } => {
+                let opp = 1 - ctx.acting_player;
+                if let Some(ref active) = state.players[opp].active {
+                    if let Some(el) = crate::types::Element::from_str(element) {
+                        if db.get_by_idx(active.card_idx).element == Some(el) { bonus += *b; }
+                    }
+                }
+            }
+            EffectKind::BonusIfBenchDamaged { bonus: b } => {
+                // Drampa Berserk: +bonus if any of acting player's bench Pokémon are damaged.
+                let p = ctx.acting_player;
+                let bench_damaged = state.players[p].bench.iter().any(|bs| {
+                    bs.as_ref().map(|s| s.current_hp < s.max_hp).unwrap_or(false)
+                });
+                if bench_damaged {
+                    bonus += *b;
+                }
+            }
+            EffectKind::BonusIfExtraEnergy { threshold, bonus: b, energy_type } => {
+                let count = if energy_type.is_empty() {
+                    state.players[ctx.acting_player].active
+                        .as_ref()
+                        .map(|s| s.total_energy() as i16)
+                        .unwrap_or(0)
+                } else {
+                    crate::types::Element::from_str(energy_type)
+                        .map(|el| {
+                            state.players[ctx.acting_player].active
+                                .as_ref()
+                                .map(|s| s.energy[el.idx()] as i16)
+                                .unwrap_or(0)
+                        })
+                        .unwrap_or(0)
+                };
+                if count >= *threshold {
+                    bonus += *b;
+                }
+            }
             _ => {}
         }
     }
-    (base_damage + bonus, false, HashMap::new())
+
+    // Apply supporter damage aura (Giovanni, Red, etc.)
+    // attack_damage_bonus is set each turn by supporter trainers and cleared at turn start.
+    let aura = state.players[ctx.acting_player].attack_damage_bonus as i16;
+    if aura != 0 {
+        let names = state.players[ctx.acting_player].attack_damage_bonus_names.clone();
+        let applies = if names.is_empty() {
+            // No restriction — applies to all targets (Giovanni-style)
+            true
+        } else if names.iter().any(|n| n == "ex") {
+            // Red-style: only applies when opponent's active is an ex Pokémon
+            let opp = 1 - ctx.acting_player;
+            state.players[opp].active.as_ref()
+                .map(|s| db.get_by_idx(s.card_idx).is_ex)
+                .unwrap_or(false)
+        } else {
+            // Named-attacker restriction: only applies when the attacker's name is in the list
+            state.players[ctx.acting_player].active.as_ref()
+                .map(|s| names.iter().any(|n| *n == db.get_by_idx(s.card_idx).name))
+                .unwrap_or(false)
+        };
+        if applies {
+            bonus += aura;
+        }
+    }
+
+    let final_damage = if let Some(replaced) = base_replaced {
+        replaced + bonus
+    } else {
+        base_damage + bonus
+    };
+    (final_damage, false, HashMap::new())
 }

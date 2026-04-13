@@ -78,10 +78,12 @@ pub fn apply_random_status(state: &mut GameState, ctx: &EffectContext) {
     set_status(state, target, chosen);
 }
 
-/// Toxic poison — opponent's active takes double poison damage per turn.
-/// For now, just applies Poisoned (doubled damage is handled at checkup time).
+/// Toxic poison — applies Poisoned status AND increases the opponent's per-turn
+/// poison damage by 20 (Nihilego "More Poison" ability). Stacks each use.
 pub fn toxic_poison(state: &mut GameState, ctx: &EffectContext) {
     apply_poison(state, ctx);
+    let opp = 1 - ctx.acting_player;
+    state.players[opp].extra_poison_damage += 20;
 }
 
 // ------------------------------------------------------------------ //
@@ -91,17 +93,23 @@ pub fn toxic_poison(state: &mut GameState, ctx: &EffectContext) {
 /// Flip a coin. On heads, apply Paralyzed to the opponent's active Pokémon.
 pub fn coin_flip_apply_paralysis(state: &mut GameState, ctx: &EffectContext) {
     let heads = state.rng.gen::<f64>() < 0.5;
-    if heads {
-        apply_paralysis(state, ctx);
-    }
+    state.coin_flip_log.push(if heads {
+        "🪙 Heads! Opponent is Paralyzed".to_string()
+    } else {
+        "🪙 Tails! No Paralysis".to_string()
+    });
+    if heads { apply_paralysis(state, ctx); }
 }
 
 /// Flip a coin. On heads, apply Asleep to the opponent's active Pokémon.
 pub fn coin_flip_apply_sleep(state: &mut GameState, ctx: &EffectContext) {
     let heads = state.rng.gen::<f64>() < 0.5;
-    if heads {
-        apply_sleep(state, ctx);
-    }
+    state.coin_flip_log.push(if heads {
+        "🪙 Heads! Opponent is Asleep".to_string()
+    } else {
+        "🪙 Tails! No Sleep".to_string()
+    });
+    if heads { apply_sleep(state, ctx); }
 }
 
 // ------------------------------------------------------------------ //
@@ -128,6 +136,11 @@ pub fn self_sleep(state: &mut GameState, ctx: &EffectContext) {
 /// (the Defending Pokémon can't attack during your opponent's next turn).
 pub fn coin_flip_attack_block_next_turn(state: &mut GameState, ctx: &EffectContext) {
     let heads = state.rng.gen::<f64>() < 0.5;
+    state.coin_flip_log.push(if heads {
+        "🪙 Heads! Opponent can't attack next turn".to_string()
+    } else {
+        "🪙 Tails! No effect".to_string()
+    });
     if heads {
         let opp = get_opponent(ctx);
         if let Some(slot) = state.players[opp].active.as_mut() {

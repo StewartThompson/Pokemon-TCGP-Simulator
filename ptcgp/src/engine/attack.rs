@@ -12,7 +12,7 @@ use crate::state::{GameState, PokemonSlot};
 use crate::actions::SlotRef;
 use crate::types::{CostSymbol, StatusEffect};
 use crate::constants::WEAKNESS_BONUS;
-use crate::effects::EffectContext;
+use crate::effects::{EffectContext, EffectKind};
 use crate::effects::dispatch::{apply_effects, compute_damage_modifier};
 
 #[inline]
@@ -130,8 +130,14 @@ pub fn execute_attack(
         .as_ref()
         .unwrap()
         .has_status(StatusEffect::Confused);
-    if is_confused && state.rng.gen::<f64>() >= 0.5 {
-        return;
+    if is_confused {
+        let heads = state.rng.gen::<f64>() < 0.5;
+        state.coin_flip_log.push(if heads {
+            "🪙 Confusion flip: Heads! Attack succeeds".to_string()
+        } else {
+            "🪙 Confusion flip: Tails! Attack hits self (30dmg)".to_string()
+        });
+        if !heads { return; }
     }
 
     // 4. Get defender (opponent's active).
@@ -150,8 +156,11 @@ pub fn execute_attack(
     let defender_card = db.get_by_idx(defender_card_idx).clone();
 
     // 5. Compute base_damage with weakness bonus.
+    // Only apply the +20 weakness bonus when the attack has a non-zero base
+    // damage.  Zero-damage attacks (e.g. Tail Whip) must not deal bonus damage
+    // simply because of a type match-up.
     let mut base_damage = attack.damage;
-    if attacker_element.is_some() && defender_card.weakness == attacker_element {
+    if attack.damage > 0 && attacker_element.is_some() && defender_card.weakness == attacker_element {
         base_damage += WEAKNESS_BONUS;
     }
 
@@ -180,15 +189,37 @@ pub fn execute_attack(
         mod_skip
     };
 
+    // 7b. PassivePreventExDamage (Oricorio Safeguard): if the defender's active
+    // ability has this passive and the attacker is an ex Pokemon, negate damage.
+    let attacker_is_ex = db.get_by_idx(attacker_card_idx).is_ex;
+    if attacker_is_ex && !mod_skip {
+        let defender_has_safeguard = state.players[opponent_idx]
+            .active
+            .as_ref()
+            .map(|s| {
+                let card = db.get_by_idx(s.card_idx);
+                card.ability.as_ref().map(|ab| {
+                    ab.effects.iter().any(|e| matches!(e, EffectKind::PassivePreventExDamage))
+                }).unwrap_or(false)
+            })
+            .unwrap_or(false);
+        if defender_has_safeguard {
+            final_damage = 0;
+        }
+    }
+
     // 8. Apply damage.
     let damage_dealt: i16;
+    let opponent_ko: bool;
     if !mod_skip && final_damage > 0 {
         let defender_hp = state.players[opponent_idx].active.as_ref().unwrap().current_hp;
         damage_dealt = final_damage.min(defender_hp);
         let new_hp = (defender_hp - final_damage).max(0);
         state.players[opponent_idx].active.as_mut().unwrap().current_hp = new_hp;
+        opponent_ko = new_hp == 0;
     } else {
         damage_dealt = 0;
+        opponent_ko = false;
     }
 
     // 9. Retaliate (Rocky Helmet / Druddigon).
@@ -199,12 +230,27 @@ pub fn execute_attack(
             let attacker = state.players[state.current_player].active.as_mut().unwrap();
             attacker.current_hp = (attacker.current_hp - retaliate).max(0);
         }
+
+        // Poison Barb: if defender's tool has PassiveRetaliatePoison, poison the attacker.
+        let has_poison_barb = state.players[opponent_idx].active.as_ref()
+            .and_then(|slot| slot.tool_idx)
+            .and_then(|tidx| db.try_get_by_idx(tidx))
+            .map(|tool| {
+                tool.trainer_effects.iter().any(|e| matches!(e, EffectKind::PassiveRetaliatePoison))
+            })
+            .unwrap_or(false);
+        if has_poison_barb {
+            if let Some(attacker) = state.players[state.current_player].active.as_mut() {
+                attacker.add_status(StatusEffect::Poisoned);
+            }
+        }
     }
 
     // 10. Apply side-effect handlers.
+    let attacker_ref = SlotRef::active(state.current_player);
     let ctx_with_damage = EffectContext {
         acting_player: state.current_player,
-        source_ref: None,
+        source_ref: Some(attacker_ref),
         target_ref: None,
         extra: {
             let mut m = modifier_result
@@ -212,6 +258,7 @@ pub fn execute_attack(
                 .map(|(k, &v)| (k.clone(), v))
                 .collect::<HashMap<String, i32>>();
             m.insert("damage_dealt".to_string(), damage_dealt as i32);
+            m.insert("opponent_ko".to_string(), opponent_ko as i32);
             m
         },
     };

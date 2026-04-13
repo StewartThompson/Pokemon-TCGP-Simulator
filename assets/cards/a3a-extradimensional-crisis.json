@@ -1143,7 +1143,7 @@
           "Colorless",
           "Colorless"
         ],
-        "handler": "discard_random_energy_opponent"
+        "handler": "coin_flip_until_tails_discard_random_energy_opponent"
       },
       {
         "name": "Tyrannical Hole",
@@ -2114,7 +2114,7 @@
           "Colorless",
           "Colorless"
         ],
-        "handler": "discard_random_energy_opponent"
+        "handler": "coin_flip_until_tails_discard_random_energy_opponent"
       },
       {
         "name": "Tyrannical Hole",
@@ -2307,7 +2307,7 @@
           "Colorless",
           "Colorless"
         ],
-        "handler": "discard_random_energy_opponent"
+        "handler": "coin_flip_until_tails_discard_random_energy_opponent"
       },
       {
         "name": "Tyrannical Hole",

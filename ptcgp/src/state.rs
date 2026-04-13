@@ -115,6 +115,14 @@ pub struct PlayerState {
     pub retreat_cost_modifier: i8,
     pub cant_play_supporter_this_turn: bool,
     pub cant_play_supporter_incoming: bool,
+    /// Set by opponent_no_items_next_turn; promoted at start of the opponent's next turn.
+    pub cant_play_items_incoming: bool,
+    pub cant_play_items_this_turn: bool,
+    /// Set by opponent_no_energy_next_turn; promoted at start of the opponent's next turn.
+    pub cant_attach_energy_incoming: bool,
+    pub cant_attach_energy_this_turn: bool,
+    /// Extra poison damage taken per between-turns checkup (from Nihilego More Poison).
+    pub extra_poison_damage: i16,
 }
 
 impl Default for PlayerState {
@@ -136,6 +144,11 @@ impl Default for PlayerState {
             retreat_cost_modifier: 0,
             cant_play_supporter_this_turn: false,
             cant_play_supporter_incoming: false,
+            cant_play_items_incoming: false,
+            cant_play_items_this_turn: false,
+            cant_attach_energy_incoming: false,
+            cant_attach_energy_this_turn: false,
+            extra_poison_damage: 0,
         }
     }
 }
@@ -195,6 +208,10 @@ pub struct GameState {
     pub phase: GamePhase,
     pub winner: Option<i8>,
     pub rng: SmallRng,
+    /// Coin-flip events recorded during the current action (e.g. "🪙 Heads! +30dmg").
+    /// Drained and displayed by the runner after each action in human-play mode.
+    /// Ignored (left empty) in tournament simulations.
+    pub coin_flip_log: Vec<String>,
 }
 
 impl GameState {
@@ -207,6 +224,7 @@ impl GameState {
             phase: GamePhase::Setup,
             winner: None,
             rng: SmallRng::seed_from_u64(seed),
+            coin_flip_log: Vec::new(),
         }
     }
 

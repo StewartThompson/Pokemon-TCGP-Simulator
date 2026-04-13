@@ -2,14 +2,16 @@
 //!
 //! Implemented in Wave 9 (T23).
 
+use crate::actions::Action;
 use crate::card::CardDb;
 use crate::state::GameState;
-use crate::types::{ActionKind, Element, GamePhase};
+use crate::types::{ActionKind, Element, GamePhase, CardKind, Stage};
 use crate::agents::Agent;
 use crate::engine::{setup, mutations, ko, turn};
 use crate::engine::legal_actions::{get_legal_setup_placements, get_legal_setup_bench_placements};
 use crate::state::PokemonSlot;
 use crate::constants::MAX_TURNS;
+use crate::ui::element_emoji;
 
 // ------------------------------------------------------------------ //
 // Public API
@@ -36,6 +38,7 @@ pub struct GameResult {
 /// * `energy_types0` / `energy_types1` — energy pools for each player
 /// * `agent0` / `agent1`               — agents controlling each player
 /// * `seed`                            — RNG seed for deterministic replay
+/// * `human_player`                    — if `Some(p)`, narrate the opponent's actions to stdout
 pub fn run_game(
     db: &CardDb,
     deck0: Vec<u16>,
@@ -45,6 +48,7 @@ pub fn run_game(
     agent0: &dyn Agent,
     agent1: &dyn Agent,
     seed: u64,
+    human_player: Option<usize>,
 ) -> GameResult {
     // 1. Create game state
     let mut state = setup::create_game(db, deck0, deck1, energy_types0, energy_types1, seed);
@@ -59,7 +63,7 @@ pub fn run_game(
     setup::finalize_setup(&mut state, db);
 
     // 5. Main game loop
-    run_main_loop(&mut state, db, agent0, agent1);
+    run_main_loop(&mut state, db, agent0, agent1, human_player);
 
     // 6. Build and return result
     // state.winner: None = ongoing, Some(-1) = draw,
@@ -162,16 +166,22 @@ fn run_setup_bench_phase(
 /// - `ATTACK` and `END_TURN` both trigger `advance_turn`.
 /// - `Attack` also triggers `check_and_handle_kos` before advancing.
 /// - `AwaitingBenchPromotion` is resolved before continuing the turn.
+///
+/// When `human_player` is `Some(p)`, the opponent's actions are narrated to stdout.
 fn run_main_loop(
     state: &mut GameState,
     db: &CardDb,
     agent0: &dyn Agent,
     agent1: &dyn Agent,
+    human_player: Option<usize>,
 ) {
     // Hard action-step cap — prevents infinite loops from engine bugs.
     // Expected: ~10 actions/turn × 60 turns ≈ 600 steps. Allow 5×.
     const MAX_STEPS: u32 = 3_000;
     let mut steps: u32 = 0;
+
+    // Track whose turn it was last time we checked, so we can print turn headers.
+    let mut last_printed_player: Option<usize> = None;
 
     loop {
         steps += 1;
@@ -206,14 +216,74 @@ fn run_main_loop(
 
             GamePhase::Main => {
                 let current = state.current_player;
+                let is_ai = human_player.map_or(false, |hp| current != hp);
+
+                // Track turn switches (no extra print needed; the board redraws).
+                if is_ai && last_printed_player != Some(current) {
+                    last_printed_player = Some(current);
+                }
+
                 let agent: &dyn Agent = if current == 0 { agent0 } else { agent1 };
+
+                // Snapshot HP of the human's active before the AI acts (for KO detection).
+                let human_active_hp_before = human_player.and_then(|hp| {
+                    state.players[hp].active.as_ref().map(|s| (s.current_hp, s.card_idx))
+                });
+
                 let action = agent.select_action(state, db, current);
                 let action_kind = action.kind;
+
+                // Narrate the AI's action — push to rolling event log for the UI.
+                if is_ai {
+                    if let Some(msg) = narrate_action(state, db, &action, current) {
+                        crate::ui::push_event(format!("Opp: {}", msg));
+                    }
+                }
 
                 // EndTurn → mutations::apply_action → advance_turn (handles turn flip).
                 // Attack → execute_attack (no turn flip inside mutations); we handle below.
                 // All other actions just mutate state; loop continues.
+                state.coin_flip_log.clear();
                 mutations::apply_action(state, db, &action);
+
+                // Show coin flip results (if any) for both human and AI turns.
+                if human_player.is_some() && !state.coin_flip_log.is_empty() {
+                    println!();
+                    for flip in &state.coin_flip_log {
+                        println!("  {}", flip);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1400));
+                    state.coin_flip_log.clear();
+                }
+
+                // Log KOs on the human player's side.
+                if is_ai {
+                    if let Some(hp_player) = human_player {
+                        if let Some((hp_before, card_idx)) = human_active_hp_before {
+                            if hp_before > 0 {
+                                let hp_after = state.players[hp_player]
+                                    .active.as_ref().map_or(0, |s| s.current_hp);
+                                if hp_after == 0 || state.players[hp_player].active.is_none() {
+                                    let name = db.get_by_idx(card_idx).name.clone();
+                                    crate::ui::push_event(format!("💀 Your {} was KO'd!", name));
+                                }
+                            }
+                        }
+                    }
+
+                    // Redraw board after every AI action so the player sees what happened,
+                    // then pause briefly so they can read it before the next action.
+                    if let Some(hp) = human_player {
+                        crate::ui::render_state(state, db, hp);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(900));
+                }
+
+                // When the AI ends its turn, reset the turn-header tracker so the next
+                // AI turn prints a header again.
+                if is_ai && action_kind == ActionKind::EndTurn {
+                    last_printed_player = None;
+                }
 
                 // In PTCGP, attacking ends the turn (same as EndTurn).
                 // The Rust mutations layer doesn't auto-advance on Attack, so we mirror
@@ -226,6 +296,7 @@ fn run_main_loop(
                     ko::check_and_handle_kos(state, db);
                     if state.winner.is_none() && state.phase == GamePhase::Main {
                         turn::advance_turn(state, db);
+                        last_printed_player = None; // turn changed
                     }
                 }
             }
@@ -235,6 +306,86 @@ fn run_main_loop(
                 break;
             }
         }
+    }
+}
+
+// ------------------------------------------------------------------ //
+// Action narration helpers
+// ------------------------------------------------------------------ //
+
+/// Returns a human-readable one-line description of an action taken by the AI,
+/// using the *pre-action* state for context (Pokémon names, HP, etc.).
+/// Returns `None` for uninteresting actions (EndTurn).
+fn narrate_action(state: &GameState, db: &CardDb, action: &Action, player_idx: usize) -> Option<String> {
+    let player = &state.players[player_idx];
+    match action.kind {
+        ActionKind::EndTurn => None,
+
+        ActionKind::Attack => {
+            let active = player.active.as_ref()?;
+            let card = db.get_by_idx(active.card_idx);
+            let atk_idx = action.attack_index.unwrap_or(0);
+            let atk = card.attacks.get(atk_idx)?;
+            let opponent_idx = 1 - player_idx;
+            let defender = state.players[opponent_idx].active.as_ref()?;
+            let def_card = db.get_by_idx(defender.card_idx);
+            Some(format!(
+                "{} used {}! ({} dmg → {})",
+                card.name, atk.name, atk.damage, def_card.name
+            ))
+        }
+
+        ActionKind::AttachEnergy => {
+            let energy_emoji = player.energy_available
+                .map(element_emoji)
+                .unwrap_or("?");
+            let target_name = action.target.and_then(|t| {
+                crate::state::get_slot(state, t).map(|s| db.get_by_idx(s.card_idx).name.clone())
+            }).unwrap_or_else(|| "?".to_string());
+            Some(format!("Attached {} energy → {}", energy_emoji, target_name))
+        }
+
+        ActionKind::PlayCard => {
+            let hand_idx = action.hand_index?;
+            if hand_idx >= player.hand.len() { return None; }
+            let card_idx = player.hand[hand_idx];
+            let card = db.get_by_idx(card_idx);
+            match card.kind {
+                CardKind::Pokemon => {
+                    // Evolution or bench placement.
+                    if let Some(Stage::Stage1) | Some(Stage::Stage2) = card.stage {
+                        // Evolution: find what it evolves from.
+                        let from = card.evolves_from.as_deref().unwrap_or("?");
+                        Some(format!("Evolved {} → {}", from, card.name))
+                    } else {
+                        Some(format!("Placed {} on bench", card.name))
+                    }
+                }
+                CardKind::Item | CardKind::Supporter | CardKind::Tool => {
+                    Some(format!("Played {}", card.name))
+                }
+                _ => Some(format!("Played {}", card.name)),
+            }
+        }
+
+        ActionKind::Retreat => {
+            let active_name = player.active.as_ref()
+                .map(|s| db.get_by_idx(s.card_idx).name.clone())
+                .unwrap_or_else(|| "?".to_string());
+            let bench_name = action.target.and_then(|t| {
+                crate::state::get_slot(state, t).map(|s| db.get_by_idx(s.card_idx).name.clone())
+            }).unwrap_or_else(|| "?".to_string());
+            Some(format!("Retreated {} → brought in {}", active_name, bench_name))
+        }
+
+        ActionKind::Promote => {
+            let bench_name = action.target.and_then(|t| {
+                crate::state::get_slot(state, t).map(|s| db.get_by_idx(s.card_idx).name.clone())
+            }).unwrap_or_else(|| "bench Pokémon".to_string());
+            Some(format!("Promoted {} to Active", bench_name))
+        }
+
+        _ => None,
     }
 }
 
@@ -311,7 +462,7 @@ mod tests {
         let agent0 = RandomAgent;
         let agent1 = RandomAgent;
 
-        let result = run_game(&db, deck0, deck1, et0, et1, &agent0, &agent1, 42);
+        let result = run_game(&db, deck0, deck1, et0, et1, &agent0, &agent1, 42, None);
 
         // Game must have lasted at least one turn
         assert!(result.turns > 0, "Game should last at least one turn, got {:?}", result);
@@ -341,14 +492,14 @@ mod tests {
             deck0.clone(), deck1.clone(),
             et0.clone(), et1.clone(),
             &agent0, &agent1,
-            7,
+            7, None,
         );
         let r2 = run_game(
             &db,
             deck0, deck1,
             et0, et1,
             &agent0, &agent1,
-            7,
+            7, None,
         );
 
         assert_eq!(r1.winner, r2.winner, "Same seed must give same winner");
@@ -367,7 +518,7 @@ mod tests {
         let agent1 = RandomAgent;
 
         // Just verify these seeds don't panic
-        let _r1 = run_game(&db, deck0.clone(), deck1.clone(), et0.clone(), et1.clone(), &agent0, &agent1, 0);
-        let _r2 = run_game(&db, deck0, deck1, et0, et1, &agent0, &agent1, 999_999);
+        let _r1 = run_game(&db, deck0.clone(), deck1.clone(), et0.clone(), et1.clone(), &agent0, &agent1, 0, None);
+        let _r2 = run_game(&db, deck0, deck1, et0, et1, &agent0, &agent1, 999_999, None);
     }
 }

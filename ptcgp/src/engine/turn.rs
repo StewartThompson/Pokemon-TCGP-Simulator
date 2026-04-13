@@ -6,12 +6,8 @@ use rand::seq::SliceRandom;
 use crate::card::CardDb;
 use crate::state::GameState;
 use crate::types::GamePhase;
-
-/// Stub: between-turns status effects (poison/burn/paralysis). Implemented in T12.
-pub fn resolve_between_turns(_state: &mut GameState) {}
-
-/// Stub: check for KOs and handle them. Implemented in a later task.
-pub fn check_and_handle_kos(_state: &mut GameState, _db: &CardDb) {}
+use super::checkup::resolve_between_turns;
+use super::ko::check_and_handle_kos;
 
 /// Called at the start of each turn:
 /// - Increments `turn_number` (first call takes it from -1 → 0).
@@ -56,6 +52,16 @@ pub fn start_turn(state: &mut GameState, db: &CardDb) {
         state.players[current].cant_play_supporter_incoming;
     state.players[current].cant_play_supporter_incoming = false;
 
+    // Promote incoming item-ban flag to "this turn".
+    state.players[current].cant_play_items_this_turn =
+        state.players[current].cant_play_items_incoming;
+    state.players[current].cant_play_items_incoming = false;
+
+    // Promote incoming energy-attach-ban flag to "this turn".
+    state.players[current].cant_attach_energy_this_turn =
+        state.players[current].cant_attach_energy_incoming;
+    state.players[current].cant_attach_energy_incoming = false;
+
     // Turn 0 = first player's very first turn: skip draw and energy.
     if state.turn_number == 0 {
         return;
@@ -98,6 +104,8 @@ pub fn end_turn(state: &mut GameState) {
 
     state.players[current].energy_available = None;
     state.players[current].cant_play_supporter_this_turn = false;
+    state.players[current].cant_play_items_this_turn = false;
+    state.players[current].cant_attach_energy_this_turn = false;
 
     state.current_player = 1 - state.current_player;
 }
@@ -108,7 +116,7 @@ pub fn end_turn(state: &mut GameState) {
 /// If a winner is found or the game is in `AwaitingBenchPromotion` after the
 /// between-turns sequence, the function returns early without starting the next turn.
 pub fn advance_turn(state: &mut GameState, db: &CardDb) {
-    resolve_between_turns(state);
+    resolve_between_turns(state, db);
     check_and_handle_kos(state, db);
 
     if state.winner.is_some() {

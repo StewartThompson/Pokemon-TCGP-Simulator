@@ -1,0 +1,276 @@
+[
+  {
+    "id": "b2a-034",
+    "name": "Frigibax",
+    "element": "Water",
+    "type": "Pokemon",
+    "subtype": "Basic",
+    "health": 60,
+    "set": "Paldean Wonders (B2a)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Chilly",
+        "damage": "20",
+        "cost": ["Water"],
+        "handler": ""
+      }
+    ],
+    "retreatCost": "1",
+    "weakness": "Metal",
+    "abilities": [],
+    "evolvesFrom": null,
+    "rarity": "Common"
+  },
+  {
+    "id": "b2a-035",
+    "name": "Arctibax",
+    "element": "Water",
+    "type": "Pokemon",
+    "subtype": "Stage 1",
+    "health": 90,
+    "set": "Paldean Wonders (B2a)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Frost Smash",
+        "damage": "50",
+        "cost": ["Water", "Colorless"],
+        "handler": ""
+      }
+    ],
+    "retreatCost": "2",
+    "weakness": "Metal",
+    "abilities": [],
+    "evolvesFrom": "Frigibax",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": "b2a-036",
+    "name": "Baxcalibur",
+    "element": "Water",
+    "type": "Pokemon",
+    "subtype": "Stage 2",
+    "health": 140,
+    "set": "Paldean Wonders (B2a)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Buster Tail",
+        "damage": "90",
+        "cost": ["Water", "Water", "Water"],
+        "handler": ""
+      }
+    ],
+    "retreatCost": "3",
+    "weakness": "Metal",
+    "abilities": [
+      {
+        "name": "Ice Maker",
+        "effect": "Once during your turn, you may take a Water Energy from your Energy Zone and attach it to the Water Pokemon in the Active Spot.",
+        "handler": "attach_energy_zone_self(count=1, energy_type=Water)"
+      }
+    ],
+    "evolvesFrom": "Arctibax",
+    "rarity": "Rare"
+  },
+  {
+    "id": "b2a-037",
+    "name": "Chien-Pao ex",
+    "element": "Water",
+    "type": "Pokemon",
+    "subtype": "Basic",
+    "health": 130,
+    "set": "Paldean Wonders (B2a)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Icicle",
+        "damage": "20",
+        "cost": ["Water"],
+        "handler": ""
+      },
+      {
+        "name": "Diving Icicles",
+        "damage": "130",
+        "cost": ["Water", "Water", "Water"],
+        "effect": "Discard all Water Energy from this Pokemon. This attack does 130 damage to 1 of your opponent's Pokemon.",
+        "handler": "discard_all_typed_energy_self(energy_type=Water)"
+      }
+    ],
+    "retreatCost": "1",
+    "weakness": "Metal",
+    "abilities": [],
+    "evolvesFrom": null,
+    "rarity": "Rare EX"
+  },
+  {
+    "id": "a4a-020",
+    "name": "Suicune ex",
+    "element": "Water",
+    "type": "Pokemon",
+    "subtype": "Basic",
+    "health": 140,
+    "set": "Shining Revelry (A4a)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Crystal Waltz",
+        "damage": "0",
+        "cost": ["Water", "Water"],
+        "effect": "This attack does 20 damage for each Benched Pokemon (both yours and your opponent's).",
+        "handler": "bonus_per_bench(per=20) | bonus_per_opponent_bench(per=20)"
+      }
+    ],
+    "retreatCost": "2",
+    "weakness": "Lightning",
+    "abilities": [
+      {
+        "name": "Legendary Pulse",
+        "effect": "At the end of your turn, if this Pokemon is in the Active Spot, draw a card.",
+        "handler": ""
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Rare EX"
+  },
+  {
+    "id": "b1-177",
+    "name": "Goomy",
+    "element": "Dragon",
+    "type": "Pokemon",
+    "subtype": "Basic",
+    "health": 40,
+    "set": "Triumphant Light (B1)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Ram",
+        "damage": "30",
+        "cost": ["Colorless"],
+        "handler": ""
+      }
+    ],
+    "retreatCost": "1",
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Sticky Membrane",
+        "effect": "As long as this Pokemon is in the Active Spot, attacks used by your opponent's Active Pokemon cost 1 Colorless more.",
+        "handler": "passive_opponent_attack_cost_increase(amount=1)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Common"
+  },
+  {
+    "id": "b1-225",
+    "name": "Copycat",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Supporter",
+    "health": null,
+    "set": "Triumphant Light (B1)",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Copycat",
+        "effect": "Shuffle your hand into your deck. Draw a card for each card in your opponent's hand.",
+        "handler": "shuffle_hand_draw_opponent_count"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Uncommon"
+  },
+  {
+    "id": "b2b-066",
+    "name": "Maintenance",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Paldean Wonders (B2b)",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Maintenance",
+        "effect": "Shuffle 2 cards from your hand into your deck. Draw a card.",
+        "handler": "maintenance_shuffle(shuffle_count=2, draw_count=1)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Common"
+  },
+  {
+    "id": "b2b-069",
+    "name": "Hiking Trail",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Paldean Wonders (B2b)",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Hiking Trail",
+        "effect": "At the end of each player's turn, that player draws cards until they have 3 cards in their hand.",
+        "handler": "draw_cards(count=1)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Uncommon"
+  },
+  {
+    "id": "a4a-067",
+    "name": "Inflatable Boat",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Tool",
+    "health": null,
+    "set": "Shining Revelry (A4a)",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Inflatable Boat",
+        "effect": "The Retreat Cost of the Water Pokemon this card is attached to is 1 less.",
+        "handler": "passive_bench_retreat_reduction(amount=1)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Common"
+  },
+  {
+    "id": "b2-154",
+    "name": "Starting Plains",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Paldean Wonders (B2)",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Starting Plains",
+        "effect": "Each Basic Pokemon in play (both yours and your opponent's) gets +20 HP.",
+        "handler": ""
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Uncommon"
+  }
+]

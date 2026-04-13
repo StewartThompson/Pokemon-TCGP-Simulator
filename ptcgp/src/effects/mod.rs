@@ -86,11 +86,15 @@ pub enum EffectKind {
     ShuffleHandIntoDeck,
     ShuffleHandDrawOpponentCount,
     DiscardToDraw { count: u8 },
+    MaintenanceShuffle { shuffle_count: u8, draw_count: u8 },
     OpponentShuffleHandDraw { count: u8 },
     SearchDeckNamedBasic { name: String },
     SearchDeckRandomPokemon,
     SearchDeckEvolvesFrom { name: String },
     SearchDeckNamed { name: String },
+    /// Gladion-style: randomly put 1 card from the deck whose name matches
+    /// any entry in `names` into the hand.
+    SearchDeckMultiNamed { names: Vec<String> },
     SearchDeckGrassPokemon,
     SearchDeckRandomBasic,
     SearchDiscardRandomBasic,
@@ -103,10 +107,11 @@ pub enum EffectKind {
     DiscardRandomCardOpponent,
     DiscardRandomToolFromHand,
     DiscardRandomItemFromHand,
-    DiscardTopDeck,
+    DiscardTopDeck { count: u8 },
 
     // --- Energy effects ---
     AttachEnergyZoneSelf,
+    AttachEnergyZoneSelfN { count: u8 },
     AttachEnergyZoneBench { count: u8 },
     AttachEnergyZoneBenchBracket { count: u8 },
     AttachEnergyZoneBenchAnyBracket { count: u8 },
@@ -123,8 +128,8 @@ pub enum EffectKind {
     MultiCoinAttachBench { count: u8 },
     LusamineAttach,
     FirstTurnEnergyAttach,
-    DiscardEnergySelf,
-    DiscardNEnergySelf { count: u8 },
+    DiscardEnergySelf { energy_type: String },
+    DiscardNEnergySelf { count: u8, energy_type: String },
     DiscardAllEnergySelf,
     DiscardAllTypedEnergySelf { element: String },
     CoinFlipDiscardRandomEnergyOpponent,
@@ -132,6 +137,7 @@ pub enum EffectKind {
     DiscardRandomEnergyBothActive,
     DiscardRandomEnergyAllPokemon,
     CoinFlipUntilTailsDiscardEnergy,
+    CoinFlipUntilTailsDiscardRandomEnergyOpponent,
     MoveBenchEnergyToActive,
     MoveWaterBenchToActive,
     MoveAllTypedEnergyBenchToActive { element: String },
@@ -430,6 +436,10 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         "discard_to_draw" => EffectKind::DiscardToDraw {
             count: get_u8(&params, "count", 1),
         },
+        "maintenance_shuffle" => EffectKind::MaintenanceShuffle {
+            shuffle_count: get_u8(&params, "shuffle_count", 2),
+            draw_count: get_u8(&params, "draw_count", 1),
+        },
         "opponent_shuffle_hand_draw" => EffectKind::OpponentShuffleHandDraw {
             count: get_u8(&params, "count", 3),
         },
@@ -440,9 +450,15 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         "search_deck_evolves_from" => EffectKind::SearchDeckEvolvesFrom {
             name: get_str(&params, "name"),
         },
-        "search_deck_named" => EffectKind::SearchDeckNamed {
-            name: get_str(&params, "name"),
-        },
+        "search_deck_named" => {
+            // Handler may use "name" (single) or "names" (multi, e.g. Gladion).
+            let multi = get_names(&params, "names");
+            if multi.is_empty() {
+                EffectKind::SearchDeckNamed { name: get_str(&params, "name") }
+            } else {
+                EffectKind::SearchDeckMultiNamed { names: multi }
+            }
+        }
         "search_deck_grass_pokemon" => EffectKind::SearchDeckGrassPokemon,
         "search_deck_random_basic" => EffectKind::SearchDeckRandomBasic,
         "search_discard_random_basic" => EffectKind::SearchDiscardRandomBasic,
@@ -457,10 +473,19 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         "discard_random_card_opponent" => EffectKind::DiscardRandomCardOpponent,
         "discard_random_tool_from_hand" => EffectKind::DiscardRandomToolFromHand,
         "discard_random_item_from_hand" => EffectKind::DiscardRandomItemFromHand,
-        "discard_top_deck" => EffectKind::DiscardTopDeck,
+        "discard_top_deck" => EffectKind::DiscardTopDeck {
+            count: get_u8(&params, "count", 1),
+        },
 
         // Energy
-        "attach_energy_zone_self" => EffectKind::AttachEnergyZoneSelf,
+        "attach_energy_zone_self" => {
+            let count = get_u8(&params, "count", 1);
+            if count > 1 {
+                EffectKind::AttachEnergyZoneSelfN { count }
+            } else {
+                EffectKind::AttachEnergyZoneSelf
+            }
+        }
         "attach_energy_zone_bench" => EffectKind::AttachEnergyZoneBench {
             count: get_u8(&params, "count", 1),
         },
@@ -493,9 +518,12 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         },
         "lusamine_attach" => EffectKind::LusamineAttach,
         "first_turn_energy_attach" => EffectKind::FirstTurnEnergyAttach,
-        "discard_energy_self" => EffectKind::DiscardEnergySelf,
+        "discard_energy_self" => EffectKind::DiscardEnergySelf {
+            energy_type: get_str(&params, "energy_type"),
+        },
         "discard_n_energy_self" => EffectKind::DiscardNEnergySelf {
             count: get_u8(&params, "count", 1),
+            energy_type: get_str(&params, "energy_type"),
         },
         "discard_all_energy_self" => EffectKind::DiscardAllEnergySelf,
         "discard_all_typed_energy_self" => EffectKind::DiscardAllTypedEnergySelf {
@@ -508,6 +536,7 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         "discard_random_energy_both_active" => EffectKind::DiscardRandomEnergyBothActive,
         "discard_random_energy_all_pokemon" => EffectKind::DiscardRandomEnergyAllPokemon,
         "coin_flip_until_tails_discard_energy" => EffectKind::CoinFlipUntilTailsDiscardEnergy,
+        "coin_flip_until_tails_discard_random_energy_opponent" => EffectKind::CoinFlipUntilTailsDiscardRandomEnergyOpponent,
         "move_bench_energy_to_active" => EffectKind::MoveBenchEnergyToActive,
         "move_water_bench_to_active" => EffectKind::MoveWaterBenchToActive,
         "move_all_typed_energy_bench_to_active" => EffectKind::MoveAllTypedEnergyBenchToActive {

@@ -4,6 +4,7 @@
 
 use rand::Rng;
 use crate::card::CardDb;
+use crate::effects::EffectKind;
 use crate::state::GameState;
 use crate::types::{Element, StatusEffect};
 
@@ -52,7 +53,22 @@ pub fn retreat(state: &mut GameState, db: &CardDb, bench_slot: usize) {
 
     let active_card_idx = active.card_idx;
     let active_card = db.get_by_idx(active_card_idx);
-    let retreat_cost = (active_card.retreat_cost as i8 + state.players[current].retreat_cost_modifier)
+    // Tool passive: check for retreat cost reduction (e.g. Inflatable Boat).
+    let tool_reduction: i8 = active.tool_idx
+        .and_then(|tidx| db.try_get_by_idx(tidx))
+        .map(|tool| {
+            tool.trainer_effects.iter().find_map(|e| {
+                if let EffectKind::PassiveBenchRetreatReduction { amount } = e {
+                    Some(*amount as i8)
+                } else {
+                    None
+                }
+            }).unwrap_or(0)
+        })
+        .unwrap_or(0);
+    let retreat_cost = (active_card.retreat_cost as i8
+        + state.players[current].retreat_cost_modifier
+        - tool_reduction)
         .max(0) as u8;
 
     let total_energy = state.players[current]
@@ -100,7 +116,14 @@ pub fn retreat(state: &mut GameState, db: &CardDb, bench_slot: usize) {
     }
 
     // Clear status effects from the retreating Pokemon (old active).
-    state.players[current].active.as_mut().unwrap().clear_status();
+    // Also clear the cant_attack_next_turn flag — it is tied to being in the
+    // active position, not to the Pokémon itself.  If the Pokémon retreats, the
+    // debuff ends (same real-game behaviour as Paralysis/Sleep on retreat).
+    {
+        let slot = state.players[current].active.as_mut().unwrap();
+        slot.clear_status();
+        slot.cant_attack_next_turn = false;
+    }
 
     // Swap active <-> bench[bench_slot].
     let new_active = state.players[current].bench[bench_slot].take();

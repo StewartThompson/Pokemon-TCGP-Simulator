@@ -252,12 +252,27 @@ fn parse_cost(cost_list: &[String]) -> Vec<CostSymbol> {
 }
 
 
-fn detect_is_passive(name: &str, effect_text: &str) -> bool {
-    // Heuristic: passives typically start with "Once during" or "As long as" or mention "Poke-BODY"
-    // For now, mark based on known passive keywords
+fn detect_is_passive(name: &str, effect_text: &str, handler: &str) -> bool {
+    // Primary indicator: the handler string.
+    // Passive / auto-triggered handlers use a "passive_" prefix by convention.
+    if handler.split('|').any(|part| part.trim().starts_with("passive_")) {
+        return true;
+    }
+    // Secondary: well-known passive effect-text patterns.
     let low = effect_text.to_lowercase();
-    low.contains("as long as") || low.contains("once during your turn")
-        || name.to_lowercase().contains("body")
+    // "As long as…" → always-on passive condition (e.g. Goomy Sticky Membrane).
+    if low.contains("as long as") {
+        return true;
+    }
+    // "At the end of [your/each] turn" → auto-triggers, not a player choice.
+    if low.contains("at the end of") {
+        return true;
+    }
+    // Legacy Poké-Body naming convention.
+    if name.to_lowercase().contains("body") {
+        return true;
+    }
+    false
 }
 
 fn parse_card(raw: RawCard) -> Card {
@@ -322,7 +337,7 @@ fn parse_card(raw: RawCard) -> Card {
                 let effects = parse_handler_string(&handler);
                 let ab_name = a.name.clone().unwrap_or_default();
                 let effect_text = a.effect.clone().unwrap_or_default();
-                let is_passive = detect_is_passive(&ab_name, &effect_text);
+                let is_passive = detect_is_passive(&ab_name, &effect_text, &handler);
                 Ability { name: ab_name, effect_text, is_passive, handler, effects }
             })
         });
@@ -343,7 +358,21 @@ fn parse_card(raw: RawCard) -> Card {
             .and_then(|a| a.handler.clone())
             .unwrap_or_default();
         let trainer_effects = parse_handler_string(&trainer_handler);
-        (kind, None, None, None, 0, 0, vec![], None, trainer_effect_text, trainer_handler, trainer_effects)
+
+        // Fossil cards (e.g. Skull Fossil) have passive_ditto_impostor and are played
+        // directly to the bench as a Basic Pokémon. Reclassify them so the engine
+        // treats them correctly: legal_actions, play_basic, and the evolve system
+        // can then work with them as-is.
+        let fossil_hp = trainer_effects.iter().find_map(|e| {
+            if let EffectKind::PassiveDittoImpostor { hp } = e { Some(*hp) } else { None }
+        });
+        if let Some(hp) = fossil_hp {
+            // Treat as a Basic Pokémon with the given HP and cannot retreat (cost=4).
+            (CardKind::Pokemon, Some(crate::types::Stage::Basic), None, None,
+             hp, 4u8, vec![], None, String::new(), String::new(), vec![])
+        } else {
+            (kind, None, None, None, 0, 0, vec![], None, trainer_effect_text, trainer_handler, trainer_effects)
+        }
     };
 
     let ko_points = if is_mega_ex { 3 } else if is_ex { 2 } else { 1 };

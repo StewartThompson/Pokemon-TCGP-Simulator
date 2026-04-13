@@ -1832,7 +1832,7 @@
       {
         "name": "Pokémon Center Lady",
         "effect": "Heal 30 damage from 1 of your Pokémon, and it recovers from all Special Conditions.",
-        "handler": "heal_target(amount=30)"
+        "handler": "heal_and_cure_status(amount=30)"
       }
     ],
     "evolvesFrom": null,
@@ -2358,7 +2358,7 @@
       {
         "name": "Pokémon Center Lady",
         "effect": "Heal 30 damage from 1 of your Pokémon, and it recovers from all Special Conditions.",
-        "handler": "heal_target(amount=30)"
+        "handler": "heal_and_cure_status(amount=30)"
       }
     ],
     "evolvesFrom": null,

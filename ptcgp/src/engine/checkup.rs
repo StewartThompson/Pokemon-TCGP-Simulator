@@ -1,4 +1,6 @@
 use rand::Rng;
+use crate::card::CardDb;
+use crate::effects::EffectKind;
 use crate::state::GameState;
 use crate::types::StatusEffect;
 use crate::constants::{POISON_DAMAGE, BURN_DAMAGE};
@@ -17,17 +19,34 @@ use crate::constants::{POISON_DAMAGE, BURN_DAMAGE};
 ///
 /// HP is clamped to 0 if status damage would take it below. KO resolution
 /// is handled one level up.
-pub fn resolve_between_turns(state: &mut GameState) {
+pub fn resolve_between_turns(state: &mut GameState, db: &CardDb) {
     let p = state.current_player;
+    let opp = 1 - p;
 
     // Check if there is an active Pokemon at all
     if state.players[p].active.is_none() {
         return;
     }
 
-    // --- Poisoned: deal damage ---
+    // --- Poisoned: deal damage (base + any extra from More Poison / Nihilego) ---
     if state.players[p].active.as_ref().unwrap().has_status(StatusEffect::Poisoned) {
-        state.players[p].active.as_mut().unwrap().current_hp -= POISON_DAMAGE;
+        // Check if the opponent's active Pokemon has a ToxicPoison ability (e.g. Nihilego More Poison).
+        let extra_poison: i16 = state.players[opp].active.as_ref()
+            .map(|slot| {
+                db.try_get_by_idx(slot.card_idx)
+                    .and_then(|card| card.ability.as_ref())
+                    .map(|ab| {
+                        if ab.effects.iter().any(|e| matches!(e, EffectKind::ToxicPoison)) {
+                            10i16
+                        } else {
+                            0i16
+                        }
+                    })
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0);
+        let poison_dmg = POISON_DAMAGE + extra_poison;
+        state.players[p].active.as_mut().unwrap().current_hp -= poison_dmg;
     }
 
     // --- Burned: deal damage, then coin flip to maybe cure ---
@@ -68,8 +87,13 @@ pub fn resolve_between_turns(state: &mut GameState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::CardDb;
     use crate::state::{GameState, PokemonSlot};
     use crate::types::StatusEffect;
+
+    fn empty_db() -> CardDb {
+        CardDb::new_empty()
+    }
 
     fn make_state_with_active(hp: i16) -> GameState {
         let mut state = GameState::new(42);
@@ -82,7 +106,7 @@ mod tests {
         let mut state = make_state_with_active(100);
         state.players[0].active.as_mut().unwrap().add_status(StatusEffect::Poisoned);
 
-        resolve_between_turns(&mut state);
+        resolve_between_turns(&mut state, &empty_db());
 
         let hp = state.players[0].active.as_ref().unwrap().current_hp;
         assert_eq!(hp, 90, "Poison should deal 10 damage: expected 90 got {hp}");
@@ -94,7 +118,7 @@ mod tests {
         state.players[0].active = Some(PokemonSlot::new(0, 100));
         state.players[0].active.as_mut().unwrap().add_status(StatusEffect::Burned);
 
-        resolve_between_turns(&mut state);
+        resolve_between_turns(&mut state, &empty_db());
 
         let hp = state.players[0].active.as_ref().unwrap().current_hp;
         // HP must have dropped by exactly BURN_DAMAGE (20), possibly also cured
@@ -106,7 +130,7 @@ mod tests {
         let mut state = make_state_with_active(100);
         state.players[0].active.as_mut().unwrap().add_status(StatusEffect::Paralyzed);
 
-        resolve_between_turns(&mut state);
+        resolve_between_turns(&mut state, &empty_db());
 
         let still_paralyzed = state.players[0]
             .active.as_ref().unwrap()
@@ -119,7 +143,7 @@ mod tests {
         let mut state = make_state_with_active(100);
         state.players[0].active.as_mut().unwrap().add_status(StatusEffect::Paralyzed);
 
-        resolve_between_turns(&mut state);
+        resolve_between_turns(&mut state, &empty_db());
 
         let hp = state.players[0].active.as_ref().unwrap().current_hp;
         assert_eq!(hp, 100, "Paralysis should deal no damage");
@@ -135,7 +159,7 @@ mod tests {
             active.add_status(StatusEffect::Burned);
         }
 
-        resolve_between_turns(&mut state);
+        resolve_between_turns(&mut state, &empty_db());
 
         let hp = state.players[0].active.as_ref().unwrap().current_hp;
         assert_eq!(hp, 0, "HP should be clamped to 0, got {hp}");
@@ -146,7 +170,7 @@ mod tests {
         let mut state = make_state_with_active(100);
         state.players[0].active.as_mut().unwrap().add_status(StatusEffect::Confused);
 
-        resolve_between_turns(&mut state);
+        resolve_between_turns(&mut state, &empty_db());
 
         let hp = state.players[0].active.as_ref().unwrap().current_hp;
         assert_eq!(hp, 100, "Confused should not deal damage between turns");
@@ -161,7 +185,7 @@ mod tests {
     fn test_no_active_pokemon_does_not_panic() {
         let mut state = GameState::new(42);
         // No active set — should return cleanly
-        resolve_between_turns(&mut state);
+        resolve_between_turns(&mut state, &empty_db());
     }
 
     #[test]
@@ -173,7 +197,7 @@ mod tests {
         state.players[1].active.as_mut().unwrap().add_status(StatusEffect::Poisoned);
         state.current_player = 0;
 
-        resolve_between_turns(&mut state);
+        resolve_between_turns(&mut state, &empty_db());
 
         let opp_hp = state.players[1].active.as_ref().unwrap().current_hp;
         assert_eq!(opp_hp, 100, "Opponent's active should be unaffected: got {opp_hp}");

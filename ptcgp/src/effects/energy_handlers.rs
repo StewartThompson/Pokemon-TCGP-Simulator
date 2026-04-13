@@ -67,18 +67,20 @@ fn find_bench_by_element(
 // Attach energy — self
 // ------------------------------------------------------------------ //
 
-/// Attach `count` energy of `element` from the Energy Zone to the source Pokémon.
+/// Attach `count` energy of `element` from the Energy Zone to the acting player's
+/// Active Pokémon.
+///
+/// Both attack-based uses (Exeggcute Growth Spurt — attacker is always the active)
+/// and ability-based uses (Gardevoir Psy Shadow — "attach to the Active Spot") are
+/// correctly handled by always targeting the active slot.
 pub fn attach_energy_zone_self(
     state: &mut GameState,
     ctx: &EffectContext,
     element: Element,
     count: u8,
 ) {
-    let src = match ctx.source_ref {
-        Some(r) => r,
-        None => SlotRef::active(ctx.acting_player),
-    };
-    if let Some(slot) = get_slot_mut(state, src) {
+    let target = SlotRef::active(ctx.acting_player);
+    if let Some(slot) = get_slot_mut(state, target) {
         slot.add_energy(element, count);
     }
 }
@@ -263,10 +265,9 @@ pub fn coin_flip_until_tails_attach_energy(
     if heads == 0 {
         return;
     }
-    let tgt = match ctx.target_ref {
-        Some(r) => r,
-        None => return,
-    };
+    // Use explicit target if set; otherwise fall back to acting player's active Pokemon.
+    let tgt = ctx.target_ref
+        .unwrap_or_else(|| crate::actions::SlotRef::active(ctx.acting_player));
     if let Some(slot) = get_slot_mut(state, tgt) {
         slot.add_energy(element, heads);
     }
@@ -323,6 +324,35 @@ pub fn multi_coin_attach_bench(
 // ------------------------------------------------------------------ //
 // Discard energy — self
 // ------------------------------------------------------------------ //
+
+/// Discard 1 random energy from the source Pokémon (used when energy_type=Random).
+pub fn discard_random_energy_self(state: &mut GameState, ctx: &EffectContext) {
+    let src = match ctx.source_ref {
+        Some(r) => r,
+        None => SlotRef::active(ctx.acting_player),
+    };
+    // Split borrow: read total first, then mutate.
+    let total: u8 = match ctx.source_ref {
+        Some(r) => crate::state::get_slot(state, r)
+            .map(|s| s.energy.iter().sum())
+            .unwrap_or(0),
+        None => state.players[ctx.acting_player].active.as_ref()
+            .map(|s| s.energy.iter().sum())
+            .unwrap_or(0),
+    };
+    if total == 0 { return; }
+    let pick = state.rng.gen_range(0..total) as usize;
+    if let Some(slot) = get_slot_mut(state, src) {
+        let mut acc = 0usize;
+        for i in 0..8 {
+            acc += slot.energy[i] as usize;
+            if acc > pick {
+                slot.energy[i] -= 1;
+                return;
+            }
+        }
+    }
+}
 
 /// Discard 1 energy of `element` from the source Pokémon.
 pub fn discard_energy_self(state: &mut GameState, ctx: &EffectContext, element: Element) {
@@ -416,6 +446,26 @@ pub fn discard_random_energy_opponent(state: &mut GameState, ctx: &EffectContext
 /// Flip a coin. On heads, discard 1 random energy from the opponent's Active.
 pub fn coin_flip_discard_random_energy_opponent(state: &mut GameState, ctx: &EffectContext) {
     if state.rng.gen::<f64>() < 0.5 {
+        discard_random_energy_opponent(state, ctx);
+    }
+}
+
+/// Flip coins until tails; for each heads, discard 1 random energy from the opponent's Active.
+/// Used by Guzzlord ex's Grindcore attack.
+pub fn coin_flip_until_tails_discard_random_energy_opponent(state: &mut GameState, ctx: &EffectContext) {
+    loop {
+        let opp = 1 - ctx.acting_player;
+        let total: u8 = state.players[opp].active.as_ref()
+            .map(|s| s.energy.iter().sum())
+            .unwrap_or(0);
+        if total == 0 {
+            break;
+        }
+        if !state.rng.gen::<bool>() {
+            // Tails — stop.
+            break;
+        }
+        // Heads — discard one random energy from opponent.
         discard_random_energy_opponent(state, ctx);
     }
 }
@@ -676,6 +726,35 @@ pub fn move_all_electric_to_active_named(
         if let Some(a) = state.players[pi].active.as_mut() {
             a.energy[Element::Lightning as usize] =
                 a.energy[Element::Lightning as usize].saturating_add(moved);
+        }
+    }
+}
+
+/// Flip coins until tails; discard that many energy from the source Pokémon.
+pub fn coin_flip_until_tails_discard_energy(
+    state: &mut GameState,
+    ctx: &EffectContext,
+    element: Element,
+) {
+    let src = match ctx.source_ref {
+        Some(r) => r,
+        None => SlotRef::active(ctx.acting_player),
+    };
+    loop {
+        // Check remaining energy before each flip.
+        let has_energy = get_slot_mut(state, src)
+            .map(|s| s.energy[element as usize] > 0)
+            .unwrap_or(false);
+        if !has_energy {
+            break;
+        }
+        if !state.rng.gen::<bool>() {
+            // Tails — stop.
+            break;
+        }
+        // Heads — discard one energy.
+        if let Some(slot) = get_slot_mut(state, src) {
+            slot.energy[element as usize] -= 1;
         }
     }
 }
@@ -968,5 +1047,42 @@ mod tests {
             state.players[0].bench[0].as_ref().unwrap().total_energy(),
             0
         );
+    }
+
+    #[test]
+    fn coin_flip_until_tails_discard_energy_discards_at_least_sometimes() {
+        // Over many seeds, the loop should discard ≥1 energy at least once.
+        let mut any_discarded = false;
+        for seed in 0..300u64 {
+            let mut state = GameState::new(seed); // use distinct seeds
+            state.players[0].active = Some(PokemonSlot::new(0, 100));
+            state.players[1].active = Some(PokemonSlot::new(1, 100));
+            if let Some(slot) = state.players[0].active.as_mut() {
+                slot.energy[Element::Fire as usize] = 5;
+            }
+            let ctx = ctx_with_source(0, SlotRef::active(0));
+            coin_flip_until_tails_discard_energy(&mut state, &ctx, Element::Fire);
+            let remaining = state.players[0].active.as_ref().unwrap().energy[Element::Fire as usize];
+            if remaining < 5 {
+                any_discarded = true;
+                break;
+            }
+        }
+        assert!(any_discarded, "Expected at least one energy discard in 300 trials");
+    }
+
+    #[test]
+    fn coin_flip_until_tails_discard_energy_never_goes_negative() {
+        // Give only 2 energy; even if all coins are heads the energy can't go below 0.
+        let mut state = GameState::new(12345);
+        state.players[0].active = Some(PokemonSlot::new(0, 100));
+        if let Some(slot) = state.players[0].active.as_mut() {
+            slot.energy[Element::Fire as usize] = 2;
+        }
+        let ctx = ctx_with_source(0, SlotRef::active(0));
+        coin_flip_until_tails_discard_energy(&mut state, &ctx, Element::Fire);
+        let remaining = state.players[0].active.as_ref().unwrap().energy[Element::Fire as usize];
+        assert!(remaining <= 2, "Energy should not exceed starting amount");
+        // energy is always >= 0 by type (u8)
     }
 }

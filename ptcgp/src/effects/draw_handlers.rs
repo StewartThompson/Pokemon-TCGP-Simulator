@@ -155,6 +155,26 @@ pub fn discard_to_draw(state: &mut GameState, count: u8, ctx: &EffectContext) {
     }
 }
 
+/// Maintenance: shuffle `shuffle_count` random cards from hand into the deck, then draw `draw_count`.
+/// Net effect: cycles unwanted cards back to deck while gaining fewer new cards (hand shrinks by shuffle_count - draw_count).
+pub fn maintenance_shuffle(state: &mut GameState, shuffle_count: u8, draw_count: u8, ctx: &EffectContext) {
+    use rand::seq::SliceRandom;
+    let player = ctx.acting_player;
+    for _ in 0..shuffle_count {
+        if state.players[player].hand.is_empty() {
+            break;
+        }
+        let len = state.players[player].hand.len();
+        let idx = state.rng.gen::<usize>() % len;
+        let card = state.players[player].hand.remove(idx);
+        state.players[player].deck.push(card);
+    }
+    state.players[player].deck.shuffle(&mut state.rng);
+    for _ in 0..draw_count {
+        draw_one_for(state, player);
+    }
+}
+
 /// Opponent shuffles hand into deck then draws `count` cards.
 pub fn opponent_shuffle_hand_draw(state: &mut GameState, count: u8, ctx: &EffectContext) {
     let opponent = 1 - ctx.acting_player;
@@ -245,6 +265,30 @@ pub fn search_deck_named(state: &mut GameState, db: &CardDb, name: &str, ctx: &E
         state.players[player].hand.push(card);
         state.players[player].deck.shuffle(&mut state.rng);
     }
+}
+
+/// Gladion-style: search deck for a random card whose name matches any entry in `names`
+/// and put it into the hand.
+pub fn search_deck_multi_named(state: &mut GameState, db: &CardDb, names: &[String], ctx: &EffectContext) {
+    let player = ctx.acting_player;
+    let positions: Vec<usize> = state.players[player].deck
+        .iter()
+        .enumerate()
+        .filter(|(_, &cid)| {
+            let card_name = &db.get_by_idx(cid).name;
+            names.iter().any(|n| n.eq_ignore_ascii_case(card_name))
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    if positions.is_empty() {
+        return;
+    }
+
+    let pick = positions[state.rng.gen::<usize>() % positions.len()];
+    let card = state.players[player].deck.remove(pick);
+    state.players[player].hand.push(card);
+    state.players[player].deck.shuffle(&mut state.rng);
 }
 
 /// Search deck for a random Grass Pokemon.

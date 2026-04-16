@@ -100,10 +100,12 @@ impl CardDb {
     pub fn load(paths: &[&Path]) -> Self {
         let mut raw_cards: Vec<RawCard> = Vec::new();
         for path in paths {
-            if let Ok(content) = std::fs::read_to_string(path) {
-                if let Ok(cards) = serde_json::from_str::<Vec<RawCard>>(&content) {
-                    raw_cards.extend(cards);
-                }
+            match std::fs::read_to_string(path) {
+                Ok(content) => match serde_json::from_str::<Vec<RawCard>>(&content) {
+                    Ok(cards) => raw_cards.extend(cards),
+                    Err(err) => eprintln!("warning: failed to load {}: {}", path.display(), err),
+                },
+                Err(err) => eprintln!("warning: failed to load {}: {}", path.display(), err),
             }
         }
         Self::build_from_raw(raw_cards)
@@ -212,6 +214,7 @@ struct RawCard {
     abilities: Option<Vec<RawAbility>>,
     #[serde(rename = "evolvesFrom")]
     evolves_from: Option<String>,
+    #[allow(dead_code)] // present in JSON; reserved for future ex/rarity-based logic
     rarity: Option<String>,
 }
 
@@ -281,12 +284,11 @@ fn parse_card(raw: RawCard) -> Card {
     let subtype = raw.subtype.as_deref().unwrap_or("");
     let is_pokemon = card_type.eq_ignore_ascii_case("pokemon");
 
-    let is_ex = name.trim().ends_with(" ex") || name.trim().ends_with("-ex")
-        || raw.rarity.as_deref().map(|r| r.to_lowercase().contains("ex")).unwrap_or(false);
-    let is_mega_ex = {
-        let low = name.to_lowercase();
-        low.contains("mega") && low.contains("ex")
-    };
+    // Strict suffix-only check (case-insensitive) to avoid false positives from
+    // names like "Hex Maniac" or rarities containing the letters "ex".
+    let trimmed_lower = name.trim().to_lowercase();
+    let is_ex = trimmed_lower.ends_with(" ex") || trimmed_lower.ends_with("-ex");
+    let is_mega_ex = trimmed_lower.contains("mega") && is_ex;
 
     let (kind, stage, element, weakness, hp, retreat_cost, attacks, ability,
          trainer_effect_text, trainer_handler, trainer_effects) = if is_pokemon {
@@ -302,9 +304,16 @@ fn parse_card(raw: RawCard) -> Card {
         let retreat_cost = match raw.retreat_cost.as_ref() {
             Some(serde_json::Value::Number(n)) => {
                 let v = n.as_u64().unwrap_or(0);
-                if v > 4 { 0u8 } else { v as u8 } // 999 means "can't retreat" -> treat as 0 for now
+                // Sentinel: 999 (or any value > 4) means "cannot retreat".
+                // Use u8::MAX so the engine can treat MAX as "no retreat allowed"
+                // rather than silently making the cost 0 (free retreat).
+                if v > 4 { u8::MAX } else { v as u8 }
             }
-            Some(serde_json::Value::String(s)) => s.parse::<u8>().unwrap_or(0),
+            Some(serde_json::Value::String(s)) => match s.parse::<u64>() {
+                Ok(v) if v > 4 => u8::MAX,
+                Ok(v) => v as u8,
+                Err(_) => 0,
+            },
             _ => 0,
         };
 

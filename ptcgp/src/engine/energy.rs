@@ -12,6 +12,12 @@ use crate::actions::SlotRef;
 pub fn attach_energy(state: &mut GameState, _db: &CardDb, target: SlotRef) {
     let current = state.current_player;
 
+    // Defense-in-depth: respect the per-turn energy-attach-ban flag, mirroring
+    // the legal_actions filter.
+    if state.players[current].cant_attach_energy_this_turn {
+        return;
+    }
+
     let element = state.players[current]
         .energy_available
         .expect("No energy available to attach this turn");
@@ -101,5 +107,24 @@ mod tests {
         let mut state = make_state_with_active(&db);
         state.players[0].has_attached_energy = true;
         attach_energy(&mut state, &db, SlotRef::active(0));
+    }
+
+    #[test]
+    fn attach_energy_respects_cant_attach_flag() {
+        // Defense-in-depth: if cant_attach_energy_this_turn is set, attach_energy
+        // should be a no-op (no panic, no state change).
+        let db = load_db();
+        let mut state = make_state_with_active(&db);
+        state.players[0].cant_attach_energy_this_turn = true;
+        let energy_before = state.players[0].active.as_ref().unwrap().total_energy();
+        let avail_before = state.players[0].energy_available;
+
+        attach_energy(&mut state, &db, SlotRef::active(0));
+
+        // Should NOT have attached, and the available energy should still be set.
+        let energy_after = state.players[0].active.as_ref().unwrap().total_energy();
+        assert_eq!(energy_after, energy_before);
+        assert_eq!(state.players[0].energy_available, avail_before);
+        assert!(!state.players[0].has_attached_energy);
     }
 }

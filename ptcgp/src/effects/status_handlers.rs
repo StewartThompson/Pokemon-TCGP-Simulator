@@ -64,6 +64,16 @@ pub fn apply_confusion(state: &mut GameState, ctx: &EffectContext) {
 
 /// Pick a random status from [Poisoned, Burned, Paralyzed, Asleep, Confused]
 /// and apply it to the opponent's active Pokémon.
+///
+/// TODO: per-card subset is needed (e.g. Spinda's "Dizzy Punch" only chooses
+/// from Confused/Paralyzed). The current `EffectKind::ApplyRandomStatus`
+/// variant in `effects/mod.rs` carries no per-card status list, and the
+/// dispatch.rs call site (`apply_random_status(state, ctx)`) provides no
+/// args — so we currently fall back to drawing from all 5 statuses uniformly.
+/// Fixing this properly requires extending `ApplyRandomStatus` to
+/// `ApplyRandomStatus { statuses: Vec<StatusEffect> }` (or similar), wiring it
+/// through the parser, and switching this signature to accept a slice. Until
+/// then, see `apply_random_status_subset` below for a usable subset variant.
 pub fn apply_random_status(state: &mut GameState, ctx: &EffectContext) {
     let all_statuses = [
         StatusEffect::Poisoned,
@@ -72,8 +82,32 @@ pub fn apply_random_status(state: &mut GameState, ctx: &EffectContext) {
         StatusEffect::Asleep,
         StatusEffect::Confused,
     ];
-    let idx = state.rng.gen_range(0..all_statuses.len());
-    let chosen = all_statuses[idx];
+    apply_random_status_subset(state, ctx, &all_statuses);
+}
+
+/// Apply a uniformly-random status from `statuses` to the opponent's active.
+/// If `statuses` is empty, falls back to the full 5-status pool.
+///
+/// Intended as the future implementation hook for per-card subsets (Spinda etc.)
+/// once `EffectKind::ApplyRandomStatus` carries a status list.
+pub fn apply_random_status_subset(
+    state: &mut GameState,
+    ctx: &EffectContext,
+    statuses: &[StatusEffect],
+) {
+    let pool: &[StatusEffect] = if statuses.is_empty() {
+        &[
+            StatusEffect::Poisoned,
+            StatusEffect::Burned,
+            StatusEffect::Paralyzed,
+            StatusEffect::Asleep,
+            StatusEffect::Confused,
+        ]
+    } else {
+        statuses
+    };
+    let idx = state.rng.gen_range(0..pool.len());
+    let chosen = pool[idx];
     let target = SlotRef::active(get_opponent(ctx));
     set_status(state, target, chosen);
 }
@@ -144,18 +178,22 @@ pub fn coin_flip_attack_block_next_turn(state: &mut GameState, ctx: &EffectConte
     if heads {
         let opp = get_opponent(ctx);
         if let Some(slot) = state.players[opp].active.as_mut() {
-            slot.cant_attack_next_turn = true;
+            slot.cant_attack_next_turn_incoming = true;
         }
     }
 }
 
-/// Flip a coin. On heads, set cant_attack_next_turn on the ACTING player's
+/// Flip a coin. On **TAILS**, set cant_attack_next_turn on the ACTING player's
 /// own active (self-inflicted attack block).
+///
+/// NOTE: dispatch.rs wires `EffectKind::CoinFlipSelfCantAttackNextTurn` to the
+/// copy in `misc_handlers`. This copy is kept in sync for behavioural parity
+/// with that one (TAILS → cannot attack).
 pub fn coin_flip_self_cant_attack_next_turn(state: &mut GameState, ctx: &EffectContext) {
-    let heads = state.rng.gen::<f64>() < 0.5;
-    if heads {
+    let tails = state.rng.gen::<f64>() >= 0.5;
+    if tails {
         if let Some(slot) = state.players[ctx.acting_player].active.as_mut() {
-            slot.cant_attack_next_turn = true;
+            slot.cant_attack_next_turn_incoming = true;
         }
     }
 }
@@ -290,9 +328,9 @@ mod tests {
             coin_flip_attack_block_next_turn(&mut state, &ctx);
             let opp = state.players[1].active.as_ref().unwrap();
             let own = state.players[0].active.as_ref().unwrap();
-            if opp.cant_attack_next_turn {
+            if opp.cant_attack_next_turn_incoming {
                 any_blocked = true;
-                assert!(!own.cant_attack_next_turn, "own should not have cant_attack set");
+                assert!(!own.cant_attack_next_turn_incoming, "own should not have cant_attack set");
             }
         }
         assert!(any_blocked, "Expected at least one heads in 200 trials");
@@ -308,9 +346,9 @@ mod tests {
             coin_flip_self_cant_attack_next_turn(&mut state, &ctx);
             let own = state.players[0].active.as_ref().unwrap();
             let opp = state.players[1].active.as_ref().unwrap();
-            if own.cant_attack_next_turn {
+            if own.cant_attack_next_turn_incoming {
                 any_blocked = true;
-                assert!(!opp.cant_attack_next_turn, "opponent should not have cant_attack set");
+                assert!(!opp.cant_attack_next_turn_incoming, "opponent should not have cant_attack set");
             }
         }
         assert!(any_blocked, "Expected at least one heads in 200 trials");

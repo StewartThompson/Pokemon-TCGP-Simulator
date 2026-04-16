@@ -149,29 +149,63 @@ pub fn attach_n_energy_zone_bench(
 /// Colorless Energy does not exist in the Energy Zone — no-op.
 pub fn attach_colorless_energy_zone_bench(_state: &mut GameState, _ctx: &EffectContext) {}
 
-/// Choose 2 benched Pokémon and attach 1 Water Energy to each.
+/// Choose 2 of your Benched Pokémon; attach 1 Water Energy to each.
+/// Used by Manaphy's attack — the attacker (player) picks two own bench
+/// slots, surfaced via `ctx.target_ref` and `ctx.extra_target_ref` (set by
+/// `legal_actions::get_legal_actions` which enumerates one Action per
+/// unordered pair).
+///
+/// Falls back to deterministic selection (lowest bench indices) only if a
+/// caller bypasses legal_actions and supplies no targets.
 pub fn attach_water_two_bench(state: &mut GameState, ctx: &EffectContext) {
     let pi = ctx.acting_player;
-    // Collect eligible bench indices
-    let eligible: Vec<usize> = state.players[pi]
-        .bench
-        .iter()
-        .enumerate()
-        .filter_map(|(i, s)| if s.is_some() { Some(i) } else { None })
-        .collect();
-    if eligible.is_empty() {
-        return;
-    }
-    // Pick up to 2 at random
-    let pick_count = eligible.len().min(2);
-    let mut indices = eligible.clone();
-    // Shuffle and take first pick_count
-    // We need to use the state rng; temporarily split the borrow.
-    let chosen: Vec<usize> = {
-        let mut tmp = indices;
-        tmp.shuffle(&mut state.rng);
-        tmp.into_iter().take(pick_count).collect()
+
+    // Helper: validate a SlotRef points to an own bench slot that's occupied.
+    let valid_own_bench = |state: &GameState, t: SlotRef| -> Option<usize> {
+        if t.player as usize != pi || !t.is_bench() {
+            return None;
+        }
+        let bi = t.bench_index();
+        if state.players[pi].bench[bi].is_some() {
+            Some(bi)
+        } else {
+            None
+        }
     };
+
+    let mut chosen: Vec<usize> = Vec::with_capacity(2);
+    if let Some(t) = ctx.target_ref {
+        if let Some(bi) = valid_own_bench(state, t) {
+            chosen.push(bi);
+        }
+    }
+    if let Some(t) = ctx.extra_target_ref {
+        if let Some(bi) = valid_own_bench(state, t) {
+            if !chosen.contains(&bi) {
+                chosen.push(bi);
+            }
+        }
+    }
+
+    // Fallback (e.g. no targets supplied): pick first two occupied bench slots
+    // deterministically. This path is only reached when bypassing legal_actions.
+    if chosen.is_empty() {
+        let occupied: Vec<usize> = (0..3)
+            .filter(|&i| state.players[pi].bench[i].is_some())
+            .collect();
+        for i in occupied.into_iter().take(2) {
+            chosen.push(i);
+        }
+    } else if chosen.len() == 1 {
+        // One target supplied — try to fill the second from the remaining bench.
+        let other = (0..3).find(|&i| {
+            state.players[pi].bench[i].is_some() && !chosen.contains(&i)
+        });
+        if let Some(i) = other {
+            chosen.push(i);
+        }
+    }
+
     for idx in chosen {
         if let Some(slot) = state.players[pi].bench[idx].as_mut() {
             slot.add_energy(Element::Water, 1);
@@ -253,21 +287,49 @@ pub fn attach_energy_zone_named(
 }
 
 /// Misty: flip coins until tails; attach that many Water Energy to the target.
+///
+/// Per RULES.md, coin flips run to completion regardless of whether the effect
+/// can actually apply, so we count heads first and apply afterward. If the
+/// target is not eligible (e.g. wrong element) the heads count is wasted —
+/// no energy is attached.
+///
+/// Misty's card text restricts the target to a Water Pokémon. When `element`
+/// is `Element::Water` we enforce that the target Pokémon's own element is
+/// also Water — heads are still flipped (and counted in any RNG log) but the
+/// attach is skipped if the target's element doesn't match.
 pub fn coin_flip_until_tails_attach_energy(
     state: &mut GameState,
+    db: &CardDb,
     ctx: &EffectContext,
     element: Element,
 ) {
+    // 1) Run the coin flips to completion first — this must happen even if
+    //    the attach step ends up being a no-op.
     let mut heads = 0u8;
     while state.rng.gen::<f64>() < 0.5 {
-        heads += 1;
+        heads = heads.saturating_add(1);
     }
+
+    // 2) Apply the attach (may be skipped if no target / ineligible target).
     if heads == 0 {
         return;
     }
-    // Use explicit target if set; otherwise fall back to acting player's active Pokemon.
     let tgt = ctx.target_ref
         .unwrap_or_else(|| crate::actions::SlotRef::active(ctx.acting_player));
+
+    // Misty/Water filter: when attaching Water energy, the target must itself
+    // be a Water Pokémon. Heads have already been "used"; if the filter fails,
+    // simply do not attach.
+    if element == Element::Water {
+        let target_is_water = crate::state::get_slot(state, tgt)
+            .and_then(|s| db.try_get_by_idx(s.card_idx))
+            .map(|c| c.element == Some(Element::Water))
+            .unwrap_or(false);
+        if !target_is_water {
+            return;
+        }
+    }
+
     if let Some(slot) = get_slot_mut(state, tgt) {
         slot.add_energy(element, heads);
     }
@@ -452,8 +514,21 @@ pub fn coin_flip_discard_random_energy_opponent(state: &mut GameState, ctx: &Eff
 
 /// Flip coins until tails; for each heads, discard 1 random energy from the opponent's Active.
 /// Used by Guzzlord ex's Grindcore attack.
+///
+/// Per RULES.md, coin flips run to completion even if the effect cannot apply,
+/// so we count heads first then apply min(heads, available) discards. Earlier
+/// versions broke out of the flip loop on `total == 0`, which could short-
+/// circuit the random sequence and skew the RNG stream.
 pub fn coin_flip_until_tails_discard_random_energy_opponent(state: &mut GameState, ctx: &EffectContext) {
-    loop {
+    // 1) Flip to completion, counting heads. No early-exit on empty resource.
+    let mut heads: u32 = 0;
+    while state.rng.gen::<bool>() {
+        heads = heads.saturating_add(1);
+    }
+
+    // 2) Apply up to `heads` discards (capped by the energy actually available
+    //    at each step — discard_random_energy_opponent is a no-op if empty).
+    for _ in 0..heads {
         let opp = 1 - ctx.acting_player;
         let total: u8 = state.players[opp].active.as_ref()
             .map(|s| s.energy.iter().sum())
@@ -461,11 +536,6 @@ pub fn coin_flip_until_tails_discard_random_energy_opponent(state: &mut GameStat
         if total == 0 {
             break;
         }
-        if !state.rng.gen::<bool>() {
-            // Tails — stop.
-            break;
-        }
-        // Heads — discard one random energy from opponent.
         discard_random_energy_opponent(state, ctx);
     }
 }
@@ -765,10 +835,18 @@ pub fn coin_flip_until_tails_discard_energy(
 // ------------------------------------------------------------------ //
 
 /// Discard the top `count` cards from the acting player's deck.
+///
+/// NOTE: `deck` is drawn via `pop()`, so the **last** element is the top of
+/// the deck. We must therefore split off from the back, not drain from the
+/// front (the previous implementation discarded the bottom of the deck).
 pub fn discard_top_deck(state: &mut GameState, ctx: &EffectContext, count: usize) {
     let p = &mut state.players[ctx.acting_player];
     let to_discard = count.min(p.deck.len());
-    let discarded: Vec<u16> = p.deck.drain(..to_discard).collect();
+    if to_discard == 0 {
+        return;
+    }
+    let split_at = p.deck.len() - to_discard;
+    let discarded: Vec<u16> = p.deck.split_off(split_at);
     p.discard.extend(discarded);
 }
 
@@ -1028,12 +1106,16 @@ mod tests {
     #[test]
     fn discard_top_deck_removes_correct_number() {
         let mut state = GameState::new(1);
+        // deck Vec uses pop() for draw, so top of deck = LAST element.
+        // For deck [1, 2, 3, 4, 5], the top is 5.
         state.players[0].deck = vec![1, 2, 3, 4, 5];
         let ctx = ctx(0);
         discard_top_deck(&mut state, &ctx, 3);
         assert_eq!(state.players[0].deck.len(), 2);
         assert_eq!(state.players[0].discard.len(), 3);
-        assert_eq!(state.players[0].deck, vec![4, 5]);
+        // Top 3 (5, 4, 3) discarded; bottom 2 (1, 2) remain.
+        assert_eq!(state.players[0].deck, vec![1, 2]);
+        assert_eq!(state.players[0].discard, vec![3, 4, 5]);
     }
 
     #[test]
@@ -1069,6 +1151,119 @@ mod tests {
             }
         }
         assert!(any_discarded, "Expected at least one energy discard in 300 trials");
+    }
+
+    // ---- Misty / coin_flip_until_tails_attach_energy element-filter tests ----
+
+    fn make_card(idx: u16, name: &str, element: Option<Element>) -> crate::card::Card {
+        crate::card::Card {
+            id: format!("test-{}", idx),
+            idx,
+            name: name.to_string(),
+            kind: crate::types::CardKind::Pokemon,
+            stage: Some(crate::types::Stage::Basic),
+            element,
+            hp: 100,
+            weakness: None,
+            retreat_cost: 1,
+            is_ex: false,
+            is_mega_ex: false,
+            evolves_from: None,
+            attacks: vec![],
+            ability: None,
+            trainer_effect_text: String::new(),
+            trainer_handler: String::new(),
+            trainer_effects: vec![],
+            ko_points: 1,
+        }
+    }
+
+    fn make_db_with(cards: Vec<crate::card::Card>) -> CardDb {
+        let mut db = CardDb::new_empty();
+        for c in cards {
+            let idx = c.idx;
+            db.id_to_idx.insert(c.id.clone(), idx);
+            db.name_to_indices.entry(c.name.clone()).or_insert_with(Vec::new).push(idx);
+            db.cards.push(c);
+        }
+        db
+    }
+
+    #[test]
+    fn misty_attaches_to_water_target() {
+        // Build a DB with a Water Pokémon at idx=0.
+        let db = make_db_with(vec![make_card(0, "Squirtle", Some(Element::Water))]);
+        // Find a seed where Misty produces at least 1 head.
+        for seed in 0..200u64 {
+            let mut state = GameState::new(seed);
+            state.players[0].active = Some(PokemonSlot::new(0, 100));
+            let ctx = EffectContext::new(0)
+                .with_target(SlotRef::active(0));
+            coin_flip_until_tails_attach_energy(&mut state, &db, &ctx, Element::Water);
+            let attached = state.players[0]
+                .active.as_ref().unwrap()
+                .energy[Element::Water as usize];
+            if attached > 0 {
+                // Found a seed with heads — attach went through to Water target.
+                return;
+            }
+        }
+        panic!("Expected at least one Water-target attach in 200 seeds");
+    }
+
+    #[test]
+    fn misty_does_not_attach_to_non_water_target() {
+        // Target is a Fire Pokémon — Water energy attach must be skipped
+        // even when heads are flipped.
+        let db = make_db_with(vec![make_card(0, "Charmander", Some(Element::Fire))]);
+        for seed in 0..200u64 {
+            let mut state = GameState::new(seed);
+            state.players[0].active = Some(PokemonSlot::new(0, 100));
+            let ctx = EffectContext::new(0)
+                .with_target(SlotRef::active(0));
+            coin_flip_until_tails_attach_energy(&mut state, &db, &ctx, Element::Water);
+            // Regardless of the heads count, NO water energy should land on a Fire target.
+            let attached = state.players[0]
+                .active.as_ref().unwrap()
+                .energy[Element::Water as usize];
+            assert_eq!(
+                attached, 0,
+                "Misty Water energy should not attach to a Fire target (seed={})", seed
+            );
+        }
+    }
+
+    #[test]
+    fn attach_water_two_bench_honors_player_chosen_targets() {
+        // Player picks bench[0] and bench[2] explicitly (skipping bench[1]).
+        let mut state = GameState::new(123);
+        state.players[0].bench[0] = Some(PokemonSlot::new(0, 100));
+        state.players[0].bench[1] = Some(PokemonSlot::new(0, 100));
+        state.players[0].bench[2] = Some(PokemonSlot::new(0, 100));
+        let ctx = EffectContext::new(0)
+            .with_target(SlotRef::bench(0, 0))
+            .with_extra_target(SlotRef::bench(0, 2));
+        attach_water_two_bench(&mut state, &ctx);
+        // bench[0] and bench[2] each got 1 Water energy; bench[1] untouched.
+        assert_eq!(state.players[0].bench[0].as_ref().unwrap().energy[Element::Water as usize], 1);
+        assert_eq!(state.players[0].bench[1].as_ref().unwrap().energy[Element::Water as usize], 0);
+        assert_eq!(state.players[0].bench[2].as_ref().unwrap().energy[Element::Water as usize], 1);
+    }
+
+    #[test]
+    fn attach_water_two_bench_skips_invalid_target_and_uses_only_valid_one() {
+        // Only one bench slot is occupied; supplied second target points to
+        // an empty bench slot. Handler should attach only to the valid one.
+        let mut state = GameState::new(456);
+        state.players[0].bench[1] = Some(PokemonSlot::new(0, 100));
+        let ctx = EffectContext::new(0)
+            .with_target(SlotRef::bench(0, 1))
+            .with_extra_target(SlotRef::bench(0, 0)); // empty
+        attach_water_two_bench(&mut state, &ctx);
+        // bench[1] still gets its energy; nothing else mutated.
+        assert_eq!(state.players[0].bench[1].as_ref().unwrap().energy[Element::Water as usize], 1);
+        assert!(state.players[0].bench[0].is_none());
+        assert!(state.players[0].bench[2].is_none());
     }
 
     #[test]

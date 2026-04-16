@@ -76,6 +76,12 @@ pub fn play_item(
     let card = db.get_by_idx(card_idx);
     assert_eq!(card.kind, CardKind::Item, "Card {:?} is not an Item", card.name);
 
+    // Defense-in-depth: respect the per-turn item-ban flag, mirroring the
+    // legal_actions filter.
+    if state.players[current].cant_play_items_this_turn {
+        return;
+    }
+
     // Capture the extra card index BEFORE popping the item from hand,
     // so indices stay stable.
     let extra_card_idx: Option<u16> = extra_hand_index.and_then(|ei| {
@@ -100,14 +106,15 @@ pub fn play_item(
     let mut ctx = EffectContext {
         acting_player: current,
         source_ref: None,
-        target_ref: None,
+        target_ref: target,
+        extra_target_ref: None,
         extra: Default::default(),
     };
     if let Some(evo_idx) = extra_card_idx {
         ctx.extra.insert("evo_card_idx".to_string(), evo_idx as i32);
     }
     if let Some(adj_idx) = adjusted_extra_idx {
-        ctx.extra.insert("evo_hand_index".to_string(), adj_idx as i32);
+        ctx.extra.insert("evo_hand_pos".to_string(), adj_idx as i32);
     }
     if let Some(t) = target {
         let slot_enc: i32 = if t.is_active() { 0 } else { t.slot as i32 + 1 };
@@ -143,6 +150,15 @@ pub fn play_supporter(
         card.name
     );
 
+    // Defense-in-depth: respect once-per-turn supporter limit and per-turn
+    // supporter-ban flag.  The legal_actions filter checks both; this mirrors
+    // them in case apply_action is invoked outside the legal-action loop.
+    if state.players[current].has_played_supporter
+        || state.players[current].cant_play_supporter_this_turn
+    {
+        return;
+    }
+
     // Pop from hand, discard, mark flag.
     state.players[current].hand.remove(hand_index);
     state.players[current].discard.push(card_idx);
@@ -153,7 +169,8 @@ pub fn play_supporter(
     let mut ctx = EffectContext {
         acting_player: current,
         source_ref: None,
-        target_ref: None,
+        target_ref: target,
+        extra_target_ref: None,
         extra: Default::default(),
     };
     if let Some(t) = target {
@@ -202,7 +219,8 @@ pub fn attach_tool(
     let mut ctx = EffectContext {
         acting_player: current,
         source_ref: None,
-        target_ref: None,
+        target_ref: Some(target),
+        extra_target_ref: None,
         extra: Default::default(),
     };
     // Encode target using the effects-system convention:

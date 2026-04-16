@@ -15,7 +15,7 @@ use crate::types::{CardKind, Stage};
 pub fn cant_retreat_next_turn(state: &mut GameState, ctx: &EffectContext) {
     let opp = 1 - ctx.acting_player;
     if let Some(slot) = state.players[opp].active.as_mut() {
-        slot.cant_retreat_next_turn = true;
+        slot.cant_retreat_next_turn_incoming = true;
     }
 }
 
@@ -24,27 +24,28 @@ pub fn cant_retreat_next_turn(state: &mut GameState, ctx: &EffectContext) {
 pub fn cant_attack_next_turn(state: &mut GameState, ctx: &EffectContext) {
     let opp = 1 - ctx.acting_player;
     if let Some(slot) = state.players[opp].active.as_mut() {
-        slot.cant_attack_next_turn = true;
+        slot.cant_attack_next_turn_incoming = true;
     }
 }
 
-/// Coin-flip version: on heads (50 %), set cant_attack_next_turn on the opponent's active.
-pub fn coin_flip_attack_block_next_turn(state: &mut GameState, ctx: &EffectContext) {
-    if state.rng.gen_bool(0.5) {
-        let opp = 1 - ctx.acting_player;
-        if let Some(slot) = state.players[opp].active.as_mut() {
-            slot.cant_attack_next_turn = true;
-        }
-    }
-}
+// NOTE: `coin_flip_attack_block_next_turn` previously lived here, but it was a
+// duplicate of `status_handlers::coin_flip_attack_block_next_turn` which is the
+// version dispatch.rs actually wires up. Removed to eliminate the dead/dup copy.
 
-/// Coin-flip version: on tails (50 %), the source Pokémon cannot attack next turn.
+/// Coin-flip: flip a coin; on **TAILS**, the acting player's own active cannot
+/// attack next turn. (Self-inflicted attack-block — used by attacks like
+/// "Hyper Beam"-style risk attacks.)
 pub fn coin_flip_self_cant_attack_next_turn(state: &mut GameState, ctx: &EffectContext) {
-    if state.rng.gen_bool(0.5) {
-        // tails means the pokemon cannot attack
+    let heads = state.rng.gen_bool(0.5);
+    state.coin_flip_log.push(if heads {
+        "🪙 Heads! Self can attack next turn".to_string()
+    } else {
+        "🪙 Tails! Self cannot attack next turn".to_string()
+    });
+    if !heads {
         let p = ctx.acting_player;
         if let Some(slot) = state.players[p].active.as_mut() {
-            slot.cant_attack_next_turn = true;
+            slot.cant_attack_next_turn_incoming = true;
         }
     }
 }
@@ -53,7 +54,7 @@ pub fn coin_flip_self_cant_attack_next_turn(state: &mut GameState, ctx: &EffectC
 pub fn self_cant_attack_next_turn(state: &mut GameState, ctx: &EffectContext) {
     let p = ctx.acting_player;
     if let Some(slot) = state.players[p].active.as_mut() {
-        slot.cant_attack_next_turn = true;
+        slot.cant_attack_next_turn_incoming = true;
     }
 }
 
@@ -62,7 +63,7 @@ pub fn self_cant_attack_next_turn(state: &mut GameState, ctx: &EffectContext) {
 pub fn self_cant_use_specific_attack(state: &mut GameState, ctx: &EffectContext) {
     let p = ctx.acting_player;
     if let Some(slot) = state.players[p].active.as_mut() {
-        slot.cant_attack_next_turn = true;
+        slot.cant_attack_next_turn_incoming = true;
     }
 }
 
@@ -70,7 +71,7 @@ pub fn self_cant_use_specific_attack(state: &mut GameState, ctx: &EffectContext)
 pub fn self_attack_buff_next_turn(state: &mut GameState, amount: i8, ctx: &EffectContext) {
     let p = ctx.acting_player;
     if let Some(slot) = state.players[p].active.as_mut() {
-        slot.attack_bonus_next_turn_self = amount;
+        slot.attack_bonus_next_turn_self_incoming = amount;
     }
 }
 
@@ -79,7 +80,7 @@ pub fn prevent_damage_next_turn(state: &mut GameState, ctx: &EffectContext) {
     if state.rng.gen_bool(0.5) {
         let p = ctx.acting_player;
         if let Some(slot) = state.players[p].active.as_mut() {
-            slot.prevent_damage_next_turn = true;
+            slot.prevent_damage_next_turn_incoming = true;
         }
     }
 }
@@ -88,7 +89,7 @@ pub fn prevent_damage_next_turn(state: &mut GameState, ctx: &EffectContext) {
 pub fn take_less_damage_next_turn(state: &mut GameState, amount: i8, ctx: &EffectContext) {
     let p = ctx.acting_player;
     if let Some(slot) = state.players[p].active.as_mut() {
-        slot.incoming_damage_reduction = amount;
+        slot.incoming_damage_reduction_incoming = amount;
     }
 }
 
@@ -96,7 +97,7 @@ pub fn take_less_damage_next_turn(state: &mut GameState, amount: i8, ctx: &Effec
 pub fn take_more_damage_next_turn(state: &mut GameState, amount: i8, ctx: &EffectContext) {
     let p = ctx.acting_player;
     if let Some(slot) = state.players[p].active.as_mut() {
-        slot.incoming_damage_reduction = -(amount);
+        slot.incoming_damage_reduction_incoming = -(amount);
     }
 }
 
@@ -104,7 +105,7 @@ pub fn take_more_damage_next_turn(state: &mut GameState, amount: i8, ctx: &Effec
 pub fn defender_attacks_do_less_damage(state: &mut GameState, amount: i8, ctx: &EffectContext) {
     let opp = 1 - ctx.acting_player;
     if let Some(slot) = state.players[opp].active.as_mut() {
-        slot.attack_bonus_next_turn_self = -(amount);
+        slot.attack_bonus_next_turn_self_incoming = -(amount);
     }
 }
 
@@ -113,7 +114,7 @@ pub fn defender_attacks_do_less_damage(state: &mut GameState, amount: i8, ctx: &
 pub fn next_turn_all_damage_reduction(state: &mut GameState, amount: i8, ctx: &EffectContext) {
     let p = ctx.acting_player;
     if let Some(slot) = state.players[p].active.as_mut() {
-        slot.incoming_damage_reduction = amount;
+        slot.incoming_damage_reduction_incoming = amount;
     }
 }
 
@@ -124,7 +125,7 @@ pub fn next_turn_metal_damage_reduction(state: &mut GameState, amount: i8, ctx: 
     // here is a simplification that matches the Python behaviour for now.
     let p = ctx.acting_player;
     if let Some(slot) = state.players[p].active.as_mut() {
-        slot.incoming_damage_reduction = amount;
+        slot.incoming_damage_reduction_incoming = amount;
     }
 }
 
@@ -155,7 +156,7 @@ pub fn opponent_no_energy_next_turn(state: &mut GameState, ctx: &EffectContext) 
 pub fn opponent_cost_increase_next_turn(state: &mut GameState, ctx: &EffectContext) {
     let opp = 1 - ctx.acting_player;
     if let Some(slot) = state.players[opp].active.as_mut() {
-        slot.cant_retreat_next_turn = true;
+        slot.cant_retreat_next_turn_incoming = true;
     }
 }
 
@@ -202,9 +203,20 @@ pub fn reduce_retreat_cost(state: &mut GameState, amount: i8, ctx: &EffectContex
 // Copy attack — complex, no-op for now
 // ------------------------------------------------------------------ //
 
-/// Mew / Mewtwo copy: copy the opponent's highest-damage attack and deal that damage.
-/// Applies weakness on the defender and the standard incoming damage reduction,
-/// then deducts HP from the opponent's active Pokémon.
+/// Mew ex (Genome Hacking) / Ditto / Mewtwo copy semantics: copy the opponent's
+/// **first** attack (`attacks[0]`) and execute it as if our active had used it,
+/// **ignoring our own energy cost** (this is the copy semantic — the cost was
+/// already paid for the copy effect itself).
+///
+/// TODO (partial implementation):
+/// - This does NOT execute the copied attack's effect tokens / handler string
+///   (so e.g. status applies, coin flips, splash damage from the copied attack
+///   are dropped). Full execution would require recursing through
+///   `engine::attack::execute_attack` with a temporary attack-index swap, which
+///   is non-trivial because the engine reads the attack list off the attacker's
+///   own card. Real Mew ex / Ditto support needs that wiring.
+/// - This DOES apply: base damage, weakness vs the defender, supporter aura
+///   (Giovanni etc.), defender's incoming damage reduction, and prevent_damage.
 pub fn copy_opponent_attack(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
     let p = ctx.acting_player;
     let opp = 1 - p;
@@ -222,13 +234,24 @@ pub fn copy_opponent_attack(state: &mut GameState, db: &CardDb, ctx: &EffectCont
     let attacker_card = db.get_by_idx(attacker_card_idx).clone();
     let opp_card = db.get_by_idx(defender_card_idx).clone();
 
-    // Pick the opponent's highest base-damage attack.
-    let best_damage = opp_card.attacks.iter().map(|a| a.damage).max().unwrap_or(0);
-    if best_damage == 0 {
+    // Per spec: copy the opponent's *first* attack.
+    let copied = match opp_card.attacks.first() {
+        Some(a) => a.clone(),
+        None => return,
+    };
+
+    let base_damage = copied.damage;
+    if base_damage == 0 {
+        // Even a 0-damage copied attack could carry effects, but we don't apply
+        // those yet (see TODO above). Bail out so we don't no-op silently.
+        state.coin_flip_log.push(format!(
+            "🪿 Copy: opponent's first attack '{}' has 0 base damage; effect tokens not yet supported (TODO)",
+            copied.name
+        ));
         return;
     }
 
-    let mut damage = best_damage;
+    let mut damage = base_damage;
 
     // Apply acting player's damage bonus aura (e.g. Giovanni).
     damage += state.players[p].attack_damage_bonus as i16;
@@ -249,6 +272,10 @@ pub fn copy_opponent_attack(state: &mut GameState, db: &CardDb, ctx: &EffectCont
 
     // Check prevent_damage flag.
     if state.players[opp].active.as_ref().map(|s| s.prevent_damage_next_turn).unwrap_or(false) {
+        state.coin_flip_log.push(format!(
+            "🪿 Copy: '{}' for {}dmg — prevented by defender's prevent_damage_next_turn",
+            copied.name, damage
+        ));
         return;
     }
 
@@ -256,6 +283,10 @@ pub fn copy_opponent_attack(state: &mut GameState, db: &CardDb, ctx: &EffectCont
     if let Some(slot) = state.players[opp].active.as_mut() {
         slot.current_hp = (slot.current_hp - damage).max(0);
     }
+    state.coin_flip_log.push(format!(
+        "🪿 Copy: used opponent's '{}' for {}dmg (effect tokens not applied — TODO)",
+        copied.name, damage
+    ));
 }
 
 // ------------------------------------------------------------------ //
@@ -312,18 +343,21 @@ pub fn big_malasada(state: &mut GameState, ctx: &EffectContext) {
 
 /// Mythical Slab: look at the top card of your deck; if it's a Psychic Pokémon, add it to hand.
 /// Simplified: put it in hand if it's a Psychic Pokémon; otherwise leave it on top.
+///
+/// NOTE: deck Vec uses `pop()` for draw, so the **top of deck = last element**.
 pub fn mythical_slab(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
     let p = ctx.acting_player;
-    if state.players[p].deck.is_empty() {
-        return;
-    }
-    let top_idx = state.players[p].deck[0];
+    let top_idx = match state.players[p].deck.last().copied() {
+        Some(idx) => idx,
+        None => return,
+    };
     let card = db.get_by_idx(top_idx);
     if card.kind == CardKind::Pokemon
         && card.element == Some(crate::types::Element::Psychic)
     {
-        state.players[p].deck.remove(0);
-        state.players[p].hand.push(top_idx);
+        // Pop the last element (top of deck) and put it into hand.
+        let drawn = state.players[p].deck.pop().expect("deck non-empty (just checked)");
+        state.players[p].hand.push(drawn);
     }
     // Otherwise leave the card on top of the deck.
 }
@@ -425,8 +459,22 @@ pub fn passive_retaliate(state: &mut GameState, ctx: &EffectContext) {
 }
 
 /// Passive block supporters marker (Hex Maniac style).
+///
+/// PTCGP rule: while this Pokémon is the opponent-facing active, the OPPONENT
+/// cannot play Supporter cards. Ideally this is a CONTINUOUS check evaluated in
+/// `legal_actions`/`play_card` against whether the opposing active still has
+/// this passive — gap: the engine currently has no continuous-passive registry.
+///
+/// As a partial implementation, whenever this passive handler is dispatched we
+/// set the per-turn `cant_play_supporter_this_turn` flag (so it bites for the
+/// current turn) plus the `_incoming` companion (so the next start_turn promotes
+/// it). This still leaks: if the active changes mid-turn, the opponent will
+/// remain blocked for the rest of the turn even though the source is no longer
+/// active. TODO: replace with a continuous-passive check in `legal_actions`.
 pub fn passive_block_supporters(state: &mut GameState, ctx: &EffectContext) {
-    let _ = (state, ctx);
+    let opp = 1 - ctx.acting_player;
+    state.players[opp].cant_play_supporter_this_turn = true;
+    state.players[opp].cant_play_supporter_incoming = true;
 }
 
 /// Passive Ditto impostor marker.
@@ -559,14 +607,14 @@ mod tests {
         let ctx = make_ctx(0);
 
         // Before: flag is false
-        assert!(!state.players[1].active.as_ref().unwrap().cant_retreat_next_turn);
+        assert!(!state.players[1].active.as_ref().unwrap().cant_retreat_next_turn_incoming);
 
         cant_retreat_next_turn(&mut state, &ctx);
 
-        // After: flag is true on opponent (player 1)
-        assert!(state.players[1].active.as_ref().unwrap().cant_retreat_next_turn);
+        // After: flag is true on opponent (player 1) — written to _incoming for promotion
+        assert!(state.players[1].active.as_ref().unwrap().cant_retreat_next_turn_incoming);
         // Acting player's flag is untouched
-        assert!(!state.players[0].active.as_ref().unwrap().cant_retreat_next_turn);
+        assert!(!state.players[0].active.as_ref().unwrap().cant_retreat_next_turn_incoming);
     }
 
     #[test]
@@ -575,8 +623,8 @@ mod tests {
         let ctx = make_ctx(1);
         cant_retreat_next_turn(&mut state, &ctx);
         // Player 1 is acting, so player 0 is the opponent
-        assert!(state.players[0].active.as_ref().unwrap().cant_retreat_next_turn);
-        assert!(!state.players[1].active.as_ref().unwrap().cant_retreat_next_turn);
+        assert!(state.players[0].active.as_ref().unwrap().cant_retreat_next_turn_incoming);
+        assert!(!state.players[1].active.as_ref().unwrap().cant_retreat_next_turn_incoming);
     }
 
     // ---- full_heal ----
@@ -634,7 +682,7 @@ mod tests {
         let ctx = make_ctx(0);
         self_attack_buff_next_turn(&mut state, 20, &ctx);
         assert_eq!(
-            state.players[0].active.as_ref().unwrap().attack_bonus_next_turn_self,
+            state.players[0].active.as_ref().unwrap().attack_bonus_next_turn_self_incoming,
             20
         );
     }
@@ -647,7 +695,7 @@ mod tests {
         let ctx = make_ctx(0);
         take_less_damage_next_turn(&mut state, 30, &ctx);
         assert_eq!(
-            state.players[0].active.as_ref().unwrap().incoming_damage_reduction,
+            state.players[0].active.as_ref().unwrap().incoming_damage_reduction_incoming,
             30
         );
     }
@@ -660,7 +708,7 @@ mod tests {
         let ctx = make_ctx(0);
         take_more_damage_next_turn(&mut state, 30, &ctx);
         assert_eq!(
-            state.players[0].active.as_ref().unwrap().incoming_damage_reduction,
+            state.players[0].active.as_ref().unwrap().incoming_damage_reduction_incoming,
             -30
         );
     }

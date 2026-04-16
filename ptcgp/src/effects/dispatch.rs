@@ -234,7 +234,7 @@ pub fn apply_effect(
                 .first().copied()
                 .or_else(|| state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Water);
-            energy_handlers::coin_flip_until_tails_attach_energy(state, ctx, element);
+            energy_handlers::coin_flip_until_tails_attach_energy(state, db, ctx, element);
         }
         EffectKind::MultiCoinAttachBench { count } => {
             let element = state.players[ctx.acting_player].energy_available
@@ -602,7 +602,9 @@ pub fn apply_effect(
         // --- Passive ability effects (structural; no runtime state mutation needed) ---
         EffectKind::PassiveDamageReduction { amount: _ } => {}
         EffectKind::PassiveRetaliate { amount: _ } => {}
-        EffectKind::PassiveBlockSupporters => {}
+        EffectKind::PassiveBlockSupporters => {
+            misc_handlers::passive_block_supporters(state, ctx);
+        }
         EffectKind::PassiveDittoImpostor { hp: _ } => {}
         EffectKind::PassiveDoubleGrassEnergy => {}
         EffectKind::PassiveImmuneStatus => {}
@@ -623,7 +625,15 @@ pub fn apply_effect(
         EffectKind::PassiveLumBerry => {}
         EffectKind::PassiveMoveDamageToSelf => {}
         EffectKind::PassiveNamedNoRetreat { name: _ } => {}
-        EffectKind::PassiveNoHealing => {}
+        EffectKind::PassiveNoHealing => {
+            // Card text: "Pokémon (both yours and your opponent's) can't be healed."
+            // Set the flag for both players; reset each start_turn and re-applied
+            // by passive dispatch.  If a future card has "opponent can't heal" only,
+            // a new EffectKind variant should be introduced.
+            state.players[0].cant_heal_this_turn = true;
+            state.players[1].cant_heal_this_turn = true;
+            let _ = ctx;
+        }
         EffectKind::PassiveOpponentAttackCostIncrease { amount: _ } => {}
         EffectKind::PassiveOpponentDamageReduction { amount: _ } => {}
         EffectKind::PassivePreventAttackEffects => {}
@@ -765,6 +775,303 @@ pub fn compute_damage_modifier(
                     bonus += *b;
                 }
             }
+            EffectKind::BonusIfExtraWaterEnergy { threshold, bonus: b } => {
+                let count = state.players[ctx.acting_player].active
+                    .as_ref()
+                    .map(|s| s.energy[crate::types::Element::Water.idx()] as i16)
+                    .unwrap_or(0);
+                if count >= *threshold {
+                    bonus += *b;
+                }
+            }
+
+            // --- Multi-coin damage variants (replace base damage) ---
+            EffectKind::MultiCoinDamage { count, per } => {
+                let mut heads = 0u16;
+                let mut results: Vec<&str> = Vec::new();
+                for _ in 0..*count {
+                    let h = state.rng.gen::<bool>();
+                    if h { heads += 1; results.push("H"); } else { results.push("T"); }
+                }
+                let total = (heads as i16) * *per;
+                state.coin_flip_log.push(format!(
+                    "🪙 {} flip{}: {} → {}dmg",
+                    count, if *count == 1 { "" } else { "s" },
+                    results.join(" "), total
+                ));
+                base_replaced = Some(total);
+            }
+            EffectKind::FlipUntilTailsDamage { per } => {
+                let mut heads = 0u16;
+                let mut results: Vec<&str> = Vec::new();
+                loop {
+                    let h = state.rng.gen::<bool>();
+                    if h {
+                        heads += 1;
+                        results.push("H");
+                    } else {
+                        results.push("T");
+                        break;
+                    }
+                }
+                let total = (heads as i16) * *per;
+                state.coin_flip_log.push(format!(
+                    "🪙 Flip until tails: {} → {}dmg",
+                    results.join(" "), total
+                ));
+                base_replaced = Some(total);
+            }
+            EffectKind::MultiCoinPerTypedEnergyDamage { per, energy_type } => {
+                // Flip 1 coin per typed energy attached to self; total = per × heads.
+                let energy_count = if let Some(el) = crate::types::Element::from_str(energy_type) {
+                    state.players[ctx.acting_player].active
+                        .as_ref()
+                        .map(|s| s.energy[el.idx()])
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let mut heads = 0u16;
+                let mut results: Vec<&str> = Vec::new();
+                for _ in 0..energy_count {
+                    let h = state.rng.gen::<bool>();
+                    if h { heads += 1; results.push("H"); } else { results.push("T"); }
+                }
+                let total = (heads as i16) * *per;
+                if !results.is_empty() {
+                    state.coin_flip_log.push(format!(
+                        "🪙 {} flip{}: {} → {}dmg",
+                        energy_count, if energy_count == 1 { "" } else { "s" },
+                        results.join(" "), total
+                    ));
+                }
+                base_replaced = Some(total);
+            }
+            EffectKind::MultiCoinPerPokemonDamage { per } => {
+                // Flip 1 coin per Pokemon you have in play (active + bench).
+                let pcount = state.players[ctx.acting_player].total_pokemon_count();
+                let mut heads = 0u16;
+                let mut results: Vec<&str> = Vec::new();
+                for _ in 0..pcount {
+                    let h = state.rng.gen::<bool>();
+                    if h { heads += 1; results.push("H"); } else { results.push("T"); }
+                }
+                let total = (heads as i16) * *per;
+                if !results.is_empty() {
+                    state.coin_flip_log.push(format!(
+                        "🪙 {} flip{}: {} → {}dmg",
+                        pcount, if pcount == 1 { "" } else { "s" },
+                        results.join(" "), total
+                    ));
+                }
+                base_replaced = Some(total);
+            }
+
+            // --- Coin-flip bonus variants (add to base damage) ---
+            EffectKind::BothCoinsBonus { amount } => {
+                let h1 = state.rng.gen::<bool>();
+                let h2 = state.rng.gen::<bool>();
+                if h1 && h2 {
+                    bonus += *amount;
+                    state.coin_flip_log.push(format!("🪙 H H! +{}dmg", amount));
+                } else {
+                    state.coin_flip_log.push(format!(
+                        "🪙 {} {} — no bonus",
+                        if h1 { "H" } else { "T" },
+                        if h2 { "H" } else { "T" }
+                    ));
+                }
+            }
+            EffectKind::MultiCoinBonus { count, per } => {
+                let mut heads = 0u16;
+                let mut results: Vec<&str> = Vec::new();
+                for _ in 0..*count {
+                    let h = state.rng.gen::<bool>();
+                    if h { heads += 1; results.push("H"); } else { results.push("T"); }
+                }
+                let add = (heads as i16) * *per;
+                bonus += add;
+                state.coin_flip_log.push(format!(
+                    "🪙 {} flip{}: {} → +{}dmg",
+                    count, if *count == 1 { "" } else { "s" },
+                    results.join(" "), add
+                ));
+            }
+            EffectKind::FlipUntilTailsBonus { per } => {
+                let mut heads = 0u16;
+                let mut results: Vec<&str> = Vec::new();
+                loop {
+                    let h = state.rng.gen::<bool>();
+                    if h {
+                        heads += 1;
+                        results.push("H");
+                    } else {
+                        results.push("T");
+                        break;
+                    }
+                }
+                let add = (heads as i16) * *per;
+                bonus += add;
+                state.coin_flip_log.push(format!(
+                    "🪙 Flip until tails: {} → +{}dmg",
+                    results.join(" "), add
+                ));
+            }
+            EffectKind::CoinFlipBonusOrSelfDamage { bonus: b, self_damage } => {
+                let h = state.rng.gen::<bool>();
+                if h {
+                    bonus += *b;
+                    state.coin_flip_log.push(format!("🪙 Heads! +{}dmg", b));
+                } else {
+                    state.coin_flip_log.push(format!("🪙 Tails! Self-damage {}", self_damage));
+                    if let Some(slot) = state.players[ctx.acting_player].active.as_mut() {
+                        slot.current_hp = (slot.current_hp - *self_damage).max(0);
+                    }
+                }
+            }
+
+            // --- Conditional bonuses based on opponent / self / board state ---
+            EffectKind::BonusPerOpponentEnergy { per } => {
+                let opp = 1 - ctx.acting_player;
+                let energy_count = state.players[opp].active
+                    .as_ref()
+                    .map(|s| s.total_energy() as i16)
+                    .unwrap_or(0);
+                bonus += per * energy_count;
+            }
+            EffectKind::BonusPerBenchElement { per, element } => {
+                let p = ctx.acting_player;
+                if let Some(el) = crate::types::Element::from_str(element) {
+                    let count = state.players[p].bench.iter().filter_map(|bs| {
+                        bs.as_ref().and_then(|s| {
+                            db.try_get_by_idx(s.card_idx).and_then(|c| c.element)
+                                .map(|e| e == el)
+                        })
+                    }).filter(|&b| b).count() as i16;
+                    bonus += per * count;
+                }
+            }
+            EffectKind::BonusPerBenchNamed { per, name } => {
+                let p = ctx.acting_player;
+                let target = name.to_ascii_lowercase();
+                let count = state.players[p].bench.iter().filter_map(|bs| {
+                    bs.as_ref().and_then(|s| {
+                        db.try_get_by_idx(s.card_idx)
+                            .map(|c| c.name.to_ascii_lowercase() == target)
+                    })
+                }).filter(|&b| b).count() as i16;
+                bonus += per * count;
+            }
+            EffectKind::BonusIfSelfDamaged { bonus: b } => {
+                if let Some(ref slot) = state.players[ctx.acting_player].active {
+                    if slot.current_hp < slot.max_hp {
+                        bonus += *b;
+                    }
+                }
+            }
+            EffectKind::BonusIfToolAttached { bonus: b } => {
+                if let Some(ref slot) = state.players[ctx.acting_player].active {
+                    if slot.tool_idx.is_some() {
+                        bonus += *b;
+                    }
+                }
+            }
+            EffectKind::BonusIfOpponentHasTool { bonus: b } => {
+                let opp = 1 - ctx.acting_player;
+                if let Some(ref slot) = state.players[opp].active {
+                    if slot.tool_idx.is_some() {
+                        bonus += *b;
+                    }
+                }
+            }
+            EffectKind::BonusIfOpponentHasAbility { bonus: b } => {
+                let opp = 1 - ctx.acting_player;
+                if let Some(ref slot) = state.players[opp].active {
+                    if let Some(card) = db.try_get_by_idx(slot.card_idx) {
+                        if card.ability.is_some() {
+                            bonus += *b;
+                        }
+                    }
+                }
+            }
+            EffectKind::BonusIfKoLastTurn { bonus: b } => {
+                // TODO: needs state field `ko_last_turn` on PlayerState.
+                // No such field exists yet; skip without modifying damage.
+                let _ = b;
+            }
+            EffectKind::BonusIfPlayedSupporter { bonus: b } => {
+                if state.players[ctx.acting_player].has_played_supporter {
+                    bonus += *b;
+                }
+            }
+            EffectKind::BonusIfJustPromoted { bonus: b } => {
+                // TODO: needs state field `was_promoted_this_turn` on PokemonSlot.
+                // No such field exists yet; skip without modifying damage.
+                let _ = b;
+            }
+            EffectKind::BonusIfOpponentMoreHp { bonus: b } => {
+                let opp = 1 - ctx.acting_player;
+                let opp_hp = state.players[opp].active.as_ref().map(|s| s.current_hp).unwrap_or(0);
+                let self_hp = state.players[ctx.acting_player].active
+                    .as_ref().map(|s| s.current_hp).unwrap_or(0);
+                if opp_hp > self_hp {
+                    bonus += *b;
+                }
+            }
+            EffectKind::BonusIfNamedInPlay { bonus: b, names } => {
+                let p = ctx.acting_player;
+                let lc_names: Vec<String> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
+                let mut found = false;
+                // Check active
+                if let Some(ref slot) = state.players[p].active {
+                    if let Some(card) = db.try_get_by_idx(slot.card_idx) {
+                        let lcn = card.name.to_ascii_lowercase();
+                        if lc_names.iter().any(|n| *n == lcn) {
+                            found = true;
+                        }
+                    }
+                }
+                // Check bench
+                if !found {
+                    for bs in &state.players[p].bench {
+                        if let Some(slot) = bs {
+                            if let Some(card) = db.try_get_by_idx(slot.card_idx) {
+                                let lcn = card.name.to_ascii_lowercase();
+                                if lc_names.iter().any(|n| *n == lcn) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if found {
+                    bonus += *b;
+                }
+            }
+            EffectKind::BonusEqualToDamageTaken => {
+                if let Some(ref slot) = state.players[ctx.acting_player].active {
+                    let dmg = slot.max_hp - slot.current_hp;
+                    bonus += dmg;
+                }
+            }
+            EffectKind::DoubleHeadsInstantKo => {
+                let h1 = state.rng.gen::<bool>();
+                let h2 = state.rng.gen::<bool>();
+                if h1 && h2 {
+                    let opp = 1 - ctx.acting_player;
+                    let target_hp = state.players[opp].active.as_ref()
+                        .map(|s| s.current_hp).unwrap_or(0);
+                    state.coin_flip_log.push("🪙 H H! Instant KO".to_string());
+                    base_replaced = Some(target_hp);
+                } else {
+                    state.coin_flip_log.push(format!(
+                        "🪙 {} {} — no KO",
+                        if h1 { "H" } else { "T" },
+                        if h2 { "H" } else { "T" }
+                    ));
+                }
+            }
             _ => {}
         }
     }
@@ -801,3 +1108,132 @@ pub fn compute_damage_modifier(
     };
     (final_damage, false, HashMap::new())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{Card, CardDb};
+    use crate::state::{GameState, PokemonSlot};
+    use crate::types::{CardKind, Element, Stage};
+
+    fn make_card(idx: u16, name: &str, element: Option<Element>) -> Card {
+        Card {
+            id: format!("test-{}", idx),
+            idx,
+            name: name.to_string(),
+            kind: CardKind::Pokemon,
+            stage: Some(Stage::Basic),
+            element,
+            hp: 100,
+            weakness: None,
+            retreat_cost: 1,
+            is_ex: false,
+            is_mega_ex: false,
+            evolves_from: None,
+            attacks: vec![],
+            ability: None,
+            trainer_effect_text: String::new(),
+            trainer_handler: String::new(),
+            trainer_effects: vec![],
+            ko_points: 1,
+        }
+    }
+
+    fn make_db(cards: Vec<Card>) -> CardDb {
+        let mut db = CardDb::new_empty();
+        for c in cards {
+            let idx = c.idx;
+            db.id_to_idx.insert(c.id.clone(), idx);
+            db.name_to_indices.entry(c.name.clone())
+                .or_insert_with(Vec::new).push(idx);
+            db.cards.push(c);
+        }
+        db
+    }
+
+    /// Pikachu ex Circle Circuit: 30 damage per Lightning bench Pokémon.
+    #[test]
+    fn pikachu_ex_circle_circuit_bonus_per_bench_element() {
+        let pikachu = make_card(0, "Pikachu ex", Some(Element::Lightning));
+        let raichu  = make_card(1, "Raichu",     Some(Element::Lightning));
+        let other   = make_card(2, "Bulbasaur",  Some(Element::Grass));
+        let db = make_db(vec![pikachu, raichu, other]);
+
+        let mut state = GameState::new(0);
+        // Active = Pikachu ex
+        state.players[0].active = Some(PokemonSlot::new(0, 70));
+        // Bench = 2 Lightning + 1 Grass
+        state.players[0].bench[0] = Some(PokemonSlot::new(1, 90));
+        state.players[0].bench[1] = Some(PokemonSlot::new(1, 90));
+        state.players[0].bench[2] = Some(PokemonSlot::new(2, 70));
+        // Opponent active dummy
+        state.players[1].active = Some(PokemonSlot::new(2, 70));
+
+        let ctx = EffectContext::new(0);
+        let effects = vec![EffectKind::BonusPerBenchElement {
+            per: 30,
+            element: "Lightning".to_string(),
+        }];
+        let (final_damage, _, _) = compute_damage_modifier(&mut state, &db, 0, &effects, &ctx);
+        // 2 Lightning bench × 30 = 60
+        assert_eq!(final_damage, 60);
+    }
+
+    /// Alakazam Psychic: +20 damage per energy on opponent's active.
+    #[test]
+    fn alakazam_psychic_bonus_per_opponent_energy() {
+        let alakazam = make_card(0, "Alakazam", Some(Element::Psychic));
+        let mewtwo   = make_card(1, "Mewtwo",   Some(Element::Psychic));
+        let db = make_db(vec![alakazam, mewtwo]);
+
+        let mut state = GameState::new(0);
+        state.players[0].active = Some(PokemonSlot::new(0, 100));
+        let mut opp = PokemonSlot::new(1, 100);
+        opp.add_energy(Element::Psychic, 2);
+        opp.add_energy(Element::Water, 1);
+        state.players[1].active = Some(opp);
+
+        let ctx = EffectContext::new(0);
+        let effects = vec![EffectKind::BonusPerOpponentEnergy { per: 20 }];
+        let base = 60;
+        let (final_damage, _, _) = compute_damage_modifier(&mut state, &db, base, &effects, &ctx);
+        // base 60 + 3 energies × 20 = 60 + 60 = 120
+        assert_eq!(final_damage, 120);
+    }
+
+    /// Marowak ex Bonemerang: 80 damage per heads on 2 coin flips.
+    /// With deterministic seed we just check it's one of the valid outcomes (0/80/160).
+    #[test]
+    fn marowak_ex_bonemerang_multi_coin_damage() {
+        let marowak = make_card(0, "Marowak ex", Some(Element::Fighting));
+        let dummy   = make_card(1, "Dummy",      Some(Element::Grass));
+        let db = make_db(vec![marowak, dummy]);
+
+        let mut state = GameState::new(123); // fixed seed
+        state.players[0].active = Some(PokemonSlot::new(0, 100));
+        state.players[1].active = Some(PokemonSlot::new(1, 100));
+
+        let ctx = EffectContext::new(0);
+        let effects = vec![EffectKind::MultiCoinDamage { count: 2, per: 80 }];
+        let (final_damage, _, _) = compute_damage_modifier(&mut state, &db, 0, &effects, &ctx);
+        assert!(
+            final_damage == 0 || final_damage == 80 || final_damage == 160,
+            "expected 0/80/160 — got {}", final_damage
+        );
+
+        // Sample many flips: average should be ~80 (1 head expected on 2 flips × 80).
+        let mut total: i64 = 0;
+        let trials = 2000;
+        for seed in 0..trials {
+            let mut s = GameState::new(seed);
+            s.players[0].active = Some(PokemonSlot::new(0, 100));
+            s.players[1].active = Some(PokemonSlot::new(1, 100));
+            let (d, _, _) = compute_damage_modifier(&mut s, &db, 0, &effects, &ctx);
+            total += d as i64;
+        }
+        let avg = total as f64 / trials as f64;
+        // Expected = 80; allow loose tolerance.
+        assert!(avg > 60.0 && avg < 100.0, "avg = {}", avg);
+    }
+}
+

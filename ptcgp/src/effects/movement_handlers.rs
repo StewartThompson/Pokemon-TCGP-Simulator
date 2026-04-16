@@ -129,12 +129,32 @@ pub fn switch_opponent_basic_to_active(state: &mut GameState, ctx: &EffectContex
 }
 
 /// Force one of the opponent's benched Pokémon **that has damage** into their Active Spot.
-/// Picks the most-damaged one; falls back to any benched Pokémon if none are damaged.
 /// Maps to Python / card text for Cyrus supporter.
+///
+/// Player choice: legal_actions emits one PlayCard per damaged opponent bench
+/// slot, so the agent has already picked one via `ctx.target_ref` by the time
+/// this handler runs. If `target_ref` is missing or invalid (e.g. a direct
+/// `apply_action` call bypassed legal_actions, or the target is no longer
+/// damaged because state changed), we fall back to a deterministic heuristic:
+/// pick the highest-`max_hp` damaged bench Pokémon, breaking ties by lowest
+/// bench index.
 pub fn switch_opponent_damaged_to_active(state: &mut GameState, ctx: &EffectContext) {
     let opp = get_opponent(ctx);
 
-    // Collect bench indices of damaged bench Pokémon (HP < max_hp).
+    // 1) Honor the agent's chosen target if present and still valid.
+    if let Some(tgt) = ctx.target_ref {
+        if tgt.player as usize == opp && tgt.is_bench() {
+            let bi = tgt.bench_index();
+            if let Some(slot) = state.players[opp].bench[bi].as_ref() {
+                if slot.current_hp < slot.max_hp {
+                    swap_active_bench(state, opp, bi);
+                    return;
+                }
+            }
+        }
+    }
+
+    // 2) Fallback heuristic — used only if no valid target was supplied.
     let damaged: Vec<usize> = state.players[opp]
         .bench
         .iter()
@@ -146,15 +166,16 @@ pub fn switch_opponent_damaged_to_active(state: &mut GameState, ctx: &EffectCont
         .collect();
 
     if damaged.is_empty() {
-        // No damaged bench Pokémon — no switch occurs.
         return;
     }
 
-    // Pick the most-damaged (lowest current_hp relative to max_hp).
-    let best_idx = *damaged.iter().max_by_key(|&&i| {
-        let slot = state.players[opp].bench[i].as_ref().unwrap();
-        slot.max_hp - slot.current_hp
-    }).unwrap();
+    let best_idx = *damaged
+        .iter()
+        .min_by_key(|&&i| {
+            let slot = state.players[opp].bench[i].as_ref().unwrap();
+            (-(slot.max_hp as i32), i as i32)
+        })
+        .unwrap();
 
     swap_active_bench(state, opp, best_idx);
 }
@@ -434,16 +455,18 @@ mod tests {
     }
 
     #[test]
-    fn switch_opponent_damaged_to_active_picks_most_damaged() {
+    fn switch_opponent_damaged_to_active_picks_highest_hp_damaged() {
+        // Heuristic: among damaged bench Pokémon, pick the one with the
+        // highest max_hp (tie-break: lowest bench index).
         let mut state = GameState::new(42);
         state.players[0].active = Some(PokemonSlot::new(0, 100));
         // Opponent: active + two bench pokemon
         state.players[1].active = Some(PokemonSlot::new(10, 100));
-        // Bench 0: slightly damaged (20 damage taken)
+        // Bench 0: 80 max_hp, slightly damaged (20 damage taken)
         let mut bench0 = PokemonSlot::new(11, 80);
         bench0.current_hp = 60; // 20 damage
         state.players[1].bench[0] = Some(bench0);
-        // Bench 1: heavily damaged (50 damage taken)
+        // Bench 1: 100 max_hp, heavily damaged (50 damage taken)
         let mut bench1 = PokemonSlot::new(12, 100);
         bench1.current_hp = 50; // 50 damage
         state.players[1].bench[1] = Some(bench1);
@@ -451,12 +474,65 @@ mod tests {
         let ctx = EffectContext::new(0);
         switch_opponent_damaged_to_active(&mut state, &ctx);
 
-        // Most damaged (bench1, 50 damage) should be promoted to active.
+        // bench1 has the highest max_hp among the damaged Pokémon, so it
+        // should be promoted to active.
         assert_eq!(state.players[1].active.as_ref().unwrap().card_idx, 12);
         // Old active goes to its bench slot (bench[1]).
         assert_eq!(state.players[1].bench[1].as_ref().unwrap().card_idx, 10);
         // Bench 0 is untouched.
         assert_eq!(state.players[1].bench[0].as_ref().unwrap().card_idx, 11);
+    }
+
+    #[test]
+    fn cyrus_honors_player_chosen_target_over_heuristic() {
+        // When ctx.target_ref is supplied, the handler must promote that
+        // bench slot — even if a different one would score higher under the
+        // fallback heuristic.
+        let mut state = GameState::new(99);
+        state.players[0].active = Some(PokemonSlot::new(0, 100));
+        state.players[1].active = Some(PokemonSlot::new(10, 100));
+        // Bench 0: damaged, low max_hp (heuristic would skip).
+        let mut bench0 = PokemonSlot::new(11, 60);
+        bench0.current_hp = 40;
+        state.players[1].bench[0] = Some(bench0);
+        // Bench 2: damaged, high max_hp (heuristic would prefer this).
+        let mut bench2 = PokemonSlot::new(12, 150);
+        bench2.current_hp = 100;
+        state.players[1].bench[2] = Some(bench2);
+
+        // Agent picked bench[0] explicitly.
+        let ctx = EffectContext::new(0).with_target(SlotRef::bench(1, 0));
+        switch_opponent_damaged_to_active(&mut state, &ctx);
+
+        // bench[0] (the agent's choice — card_idx 11) is now opp's active,
+        // even though the fallback heuristic prefers bench[2] (max_hp 150).
+        assert_eq!(state.players[1].active.as_ref().unwrap().card_idx, 11,
+            "Cyrus must promote the player-chosen target, not the heuristic pick");
+        // Old active (card 10) is now in bench[0].
+        assert_eq!(state.players[1].bench[0].as_ref().unwrap().card_idx, 10);
+        // bench[2] is untouched.
+        assert_eq!(state.players[1].bench[2].as_ref().unwrap().card_idx, 12);
+    }
+
+    #[test]
+    fn cyrus_falls_back_to_heuristic_when_target_invalid() {
+        // If the supplied target is undamaged, fall back to the heuristic.
+        let mut state = GameState::new(7);
+        state.players[0].active = Some(PokemonSlot::new(0, 100));
+        state.players[1].active = Some(PokemonSlot::new(10, 100));
+        // Bench 0: at FULL HP (invalid Cyrus target).
+        state.players[1].bench[0] = Some(PokemonSlot::new(11, 80));
+        // Bench 1: damaged (heuristic should pick this).
+        let mut bench1 = PokemonSlot::new(12, 100);
+        bench1.current_hp = 50;
+        state.players[1].bench[1] = Some(bench1);
+
+        // Agent picked bench[0] (invalid — full HP).
+        let ctx = EffectContext::new(0).with_target(SlotRef::bench(1, 0));
+        switch_opponent_damaged_to_active(&mut state, &ctx);
+
+        // Heuristic fallback promoted bench[1] (the only damaged one).
+        assert_eq!(state.players[1].active.as_ref().unwrap().card_idx, 12);
     }
 
     #[test]

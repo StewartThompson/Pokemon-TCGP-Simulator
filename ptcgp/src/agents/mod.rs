@@ -51,11 +51,30 @@ impl Agent for RandomAgent {
             return Action::end_turn();
         }
 
-        // Use a deterministic local rng seeded from turn/player so the agent
-        // is reproducible without mutating state.
-        let mut rng = SmallRng::seed_from_u64(
-            state.turn_number as u64 ^ (player_idx as u64).wrapping_mul(0xdead_beef),
-        );
+        // The Agent trait gives us &GameState, so we can't mutate state.rng.
+        // Build a per-decision seed that incorporates as much state as possible
+        // so the agent doesn't pick the same action repeatedly within a turn —
+        // notably hand/deck/discard sizes change with each card play, so the
+        // seed shifts as the agent acts.
+        //
+        // Limitation: this is still deterministic given identical state, and
+        // distinct decision points that happen to share the same hand/deck/
+        // discard sizes will see the same "random" choice. For unbiased play
+        // the trait needs &mut GameState (or an &mut Rng parameter) so we can
+        // pull from state.rng directly.
+        let p0 = &state.players[0];
+        let p1 = &state.players[1];
+        let seed = (state.turn_number as u64)
+            ^ ((player_idx as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15))
+            ^ ((state.current_player as u64) << 1)
+            ^ ((p0.hand.len() as u64) << 8)
+            ^ ((p1.hand.len() as u64) << 16)
+            ^ ((p0.deck.len() as u64) << 24)
+            ^ ((p1.deck.len() as u64) << 32)
+            ^ ((p0.discard.len() as u64) << 40)
+            ^ ((p1.discard.len() as u64) << 48)
+            ^ ((actions.len() as u64) << 56);
+        let mut rng = SmallRng::seed_from_u64(seed);
         let idx = rng.gen_range(0..actions.len());
         actions.into_iter().nth(idx).unwrap_or_else(Action::end_turn)
     }
@@ -137,6 +156,34 @@ fn score_action(state: &GameState, db: &CardDb, player_idx: usize, action: &Acti
                 let atk = &active_card.attacks[attack_idx];
                 atk.damage == 0 && atk.effects.iter().any(|e| matches!(e, EffectKind::BenchHitOpponent { .. }))
             };
+
+            // Manaphy-style "attach 1 Water energy to 2 chosen own bench slots."
+            // The agent picks a pair via (action.target, action.extra_target).
+            // Score by how much each chosen slot benefits from the attach.
+            let is_two_bench_attach = attack_idx < active_card.attacks.len() && {
+                active_card.attacks[attack_idx].effects.iter()
+                    .any(|e| matches!(e, EffectKind::AttachWaterTwoBench))
+            };
+            if is_two_bench_attach {
+                let score_target = |t: Option<crate::actions::SlotRef>| -> f32 {
+                    let t = match t { Some(x) => x, None => return 0.0 };
+                    let slot = match crate::state::get_slot(state, t) { Some(s) => s, None => return 0.0 };
+                    let c = db.get_by_idx(slot.card_idx);
+                    let max_cost = c.attacks.iter().map(|a| a.cost.len()).max().unwrap_or(0) as i16;
+                    let have = slot.total_energy() as i16;
+                    let missing = (max_cost - have).max(0);
+                    match missing {
+                        0 => 5.0,    // already paid up — wasted attach
+                        1 => 30.0,   // moves bench Pokemon to attack-ready
+                        2 => 22.0,
+                        _ => 14.0,
+                    }
+                };
+                let s_a = score_target(action.target);
+                let s_b = score_target(action.extra_target);
+                // Base 60 (modest because no damage) plus per-attached-slot value.
+                return 60.0 + s_a + s_b;
+            }
 
             if is_bench_only_attack {
                 // For bench-targeting attacks, evaluate against the weakest bench target
@@ -272,6 +319,47 @@ fn score_action(state: &GameState, db: &CardDb, player_idx: usize, action: &Acti
                             }
                             return 38.0;
                         }
+                        // Cyrus: legal_actions emits one action per damaged
+                        // opponent bench slot (target = that bench). Score the
+                        // chosen target by how much closer the active KO is.
+                        if card.name == "Cyrus" {
+                            if let Some(t) = action.target {
+                                let opp = t.player as usize;
+                                if t.is_bench() {
+                                    if let Some(slot) = state.players[opp].bench[t.bench_index()].as_ref() {
+                                        let damage = (slot.max_hp - slot.current_hp).max(0) as f32;
+                                        let close_to_ko = (slot.current_hp <= 40) as i32 as f32;
+                                        // Higher = drag a Pokemon close to KO into the active spot.
+                                        return 55.0 + damage * 0.2 + close_to_ko * 25.0;
+                                    }
+                                }
+                            }
+                            return 35.0;
+                        }
+                        // Misty: legal_actions emits one action per own Water
+                        // Pokemon (target = that slot). Prefer attaching to a
+                        // Pokemon close to its highest-cost attack threshold.
+                        if card.name == "Misty" {
+                            if let Some(t) = action.target {
+                                if let Some(slot) = crate::state::get_slot(state, t) {
+                                    let c = db.get_by_idx(slot.card_idx);
+                                    let max_cost = c.attacks.iter()
+                                        .map(|a| a.cost.len())
+                                        .max()
+                                        .unwrap_or(0) as i16;
+                                    let have = slot.total_energy() as i16;
+                                    let missing = (max_cost - have).max(0);
+                                    // Big payoff when missing 1-2 energy.
+                                    return match missing {
+                                        1 => 65.0,
+                                        2 => 55.0,
+                                        3 => 45.0,
+                                        _ => 35.0,
+                                    };
+                                }
+                            }
+                            return 35.0;
+                        }
                         // Professor's Research: always useful
                         if card.name == "Professor's Research" {
                             return 45.0;
@@ -293,22 +381,39 @@ fn score_action(state: &GameState, db: &CardDb, player_idx: usize, action: &Acti
                         }
                         // Rare Candy: check if it can be used (Stage 2 evo)
                         if card.name == "Rare Candy" {
-                            // Check if there's a Stage 2 in hand that evolves from something in play
-                            let can_use = player.hand.iter().enumerate().any(|(hi, &ci)| {
-                                if hi == hidx { return false; }
-                                let c = db.get_by_idx(ci);
-                                if c.stage != Some(crate::types::Stage::Stage2) { return false; }
-                                // Check if we have the base pokemon in play
-                                let base_name = c.evolves_from.as_deref().unwrap_or("");
-                                let base_active = player.active.as_ref()
-                                    .map(|s| db.get_by_idx(s.card_idx).name.as_str() == base_name)
-                                    .unwrap_or(false);
-                                let base_bench = player.bench.iter().any(|bs| {
-                                    bs.as_ref().map(|s| db.get_by_idx(s.card_idx).name.as_str() == base_name).unwrap_or(false)
-                                });
-                                base_active || base_bench
+                            // Rare Candy evolves a Basic Pokemon directly to a Stage 2 (skipping
+                            // Stage 1). The scorer must check the BASIC→STAGE2 chain via
+                            // `db.basic_to_stage2`, NOT the Stage 2's `evolves_from` (which
+                            // names the Stage 1 — typically not in Rare Candy decks).
+                            //
+                            // Also: a freshly-played Basic can't be evolved this turn (engine
+                            // requires `turns_in_play >= 1`), so we discount when no in-play
+                            // basic qualifies.
+                            let basic_in_play_qualifies = |slot_card_idx: u16, turns_in_play: u8| -> bool {
+                                if turns_in_play < 1 { return false; }
+                                let c = db.get_by_idx(slot_card_idx);
+                                if c.stage != Some(crate::types::Stage::Basic) { return false; }
+                                let reachable = match db.basic_to_stage2.get(&c.name) {
+                                    Some(r) if !r.is_empty() => r,
+                                    _ => return false,
+                                };
+                                // Is there a Stage 2 in hand that this Basic can evolve into?
+                                player.hand.iter().enumerate().any(|(hi, &ci)| {
+                                    if hi == hidx { return false; } // skip the Rare Candy itself
+                                    let s2 = db.get_by_idx(ci);
+                                    s2.stage == Some(crate::types::Stage::Stage2)
+                                        && reachable.contains(&s2.name)
+                                })
+                            };
+                            let active_ok = player.active.as_ref()
+                                .map(|s| basic_in_play_qualifies(s.card_idx, s.turns_in_play))
+                                .unwrap_or(false);
+                            let bench_ok = player.bench.iter().any(|bs| {
+                                bs.as_ref()
+                                    .map(|s| basic_in_play_qualifies(s.card_idx, s.turns_in_play))
+                                    .unwrap_or(false)
                             });
-                            return if can_use { 72.0 } else { 10.0 };
+                            return if active_ok || bench_ok { 78.0 } else { 10.0 };
                         }
                         // Items: base moderate score
                         return 35.0;

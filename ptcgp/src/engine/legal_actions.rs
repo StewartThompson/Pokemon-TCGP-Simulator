@@ -168,13 +168,43 @@ fn collect_supporter_actions(
             }
 
             EffectKind::SwitchOpponentDamagedToActive => {
-                let has_damaged_bench = state.players[opp]
-                    .bench.iter().flatten()
-                    .any(|s| s.current_hp < s.max_hp);
-                if !has_damaged_bench {
-                    return vec![];
+                // Cyrus: emit one PlayCard per damaged opponent bench slot so
+                // the agent (player) chooses which Pokemon to drag up.
+                let mut out = Vec::new();
+                for j in 0..3 {
+                    if let Some(slot) = state.players[opp].bench[j].as_ref() {
+                        if slot.current_hp < slot.max_hp {
+                            out.push(Action::play_item(
+                                hand_index,
+                                Some(SlotRef::bench(opp, j)),
+                            ));
+                        }
+                    }
                 }
-                return vec![Action::play_item(hand_index, None)];
+                return out;
+            }
+
+            // --- Misty: choose 1 of your Water Pokemon, then flip ---
+            EffectKind::CoinFlipUntilTailsAttachEnergy => {
+                let mut out = Vec::new();
+                let is_water = |slot: &PokemonSlot| -> bool {
+                    db.try_get_by_idx(slot.card_idx)
+                        .map(|c| c.element == Some(Element::Water))
+                        .unwrap_or(false)
+                };
+                if let Some(slot) = state.players[cp].active.as_ref() {
+                    if is_water(slot) {
+                        out.push(Action::play_item(hand_index, Some(SlotRef::active(cp))));
+                    }
+                }
+                for j in 0..3 {
+                    if let Some(slot) = state.players[cp].bench[j].as_ref() {
+                        if is_water(slot) {
+                            out.push(Action::play_item(hand_index, Some(SlotRef::bench(cp, j))));
+                        }
+                    }
+                }
+                return out;
             }
 
             // --- Heal target (any of own Pokemon) ---
@@ -374,6 +404,7 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                             target: Some(SlotRef::active(cp)),
                             attack_index: None,
                             extra_hand_index: None,
+                            extra_target: None,
                         });
                     }
                 }
@@ -387,6 +418,7 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                                 target: Some(SlotRef::bench(cp, j)),
                                 attack_index: None,
                                 extra_hand_index: None,
+                                extra_target: None,
                             });
                         }
                     }
@@ -494,6 +526,11 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                 && !active.cant_retreat_next_turn
             {
                 let active_card = db.get_by_idx(active.card_idx);
+                // Sentinel: card.rs sets retreat_cost = u8::MAX for "can't retreat"
+                // Pokémon (e.g. those with retreat cost > 4 in source data).
+                if active_card.retreat_cost == u8::MAX {
+                    // Skip emitting any retreat actions.
+                } else {
                 let base_cost = active_card.retreat_cost as i16;
                 // Tool passive: check for retreat cost reduction (e.g. Inflatable Boat).
                 let tool_reduction: i16 = active.tool_idx
@@ -518,14 +555,17 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                         }
                     }
                 }
+                } // end else (retreat_cost != u8::MAX)
             }
         }
     }
 
     // ------------------------------------------------------------------ //
-    // ATTACK  (only the first player's very first turn is blocked)
+    // ATTACK  (RULES.md §4: NEITHER player can attack on their first turn.
+    // P1's first turn is turn_number == 0; P2's first turn is turn_number == 1.
+    // Attacks are legal from turn 2 onward.)
     // ------------------------------------------------------------------ //
-    if state.turn_number >= 1 {
+    if state.turn_number >= 2 {
         let player = state.current();
         if let Some(ref active) = player.active {
             if !active.cant_attack_next_turn
@@ -565,9 +605,38 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                         can_pay_cost(active, &attack.cost)
                     };
                     if can_pay {
-                        // Sub-target targeting is complex; emit a single
-                        // action with target=None (simplified, to be refined).
-                        actions.push(Action::attack(i, None));
+                        // Emit attack actions with player-choice targeting for
+                        // effects that require the attacker to pick multiple
+                        // own slots. Currently: Manaphy `attach_water_two_bench`.
+                        let needs_two_bench = attack.effects.iter()
+                            .any(|e| matches!(e, EffectKind::AttachWaterTwoBench));
+
+                        if needs_two_bench {
+                            // Emit one action per unordered pair of own bench slots.
+                            let bench_indices: Vec<usize> = (0..3)
+                                .filter(|&j| state.players[cp].bench[j].is_some())
+                                .collect();
+                            if bench_indices.len() >= 2 {
+                                for a in 0..bench_indices.len() {
+                                    for b in (a + 1)..bench_indices.len() {
+                                        let sa = SlotRef::bench(cp, bench_indices[a]);
+                                        let sb = SlotRef::bench(cp, bench_indices[b]);
+                                        actions.push(Action::attack_two_targets(i, sa, sb));
+                                    }
+                                }
+                            } else if bench_indices.len() == 1 {
+                                // Fewer than 2 benched — emit one action with a single target;
+                                // handler will only attach once.
+                                let sa = SlotRef::bench(cp, bench_indices[0]);
+                                actions.push(Action::attack(i, Some(sa)));
+                            } else {
+                                // No bench — still legal per PTCGP rules (attack fizzles).
+                                actions.push(Action::attack(i, None));
+                            }
+                        } else {
+                            // Default: single-target (or no-target) attack.
+                            actions.push(Action::attack(i, None));
+                        }
                     }
                 }
             }
@@ -798,6 +867,137 @@ mod tests {
             .filter(|a| a.kind == ActionKind::AttachEnergy)
             .count();
         assert_eq!(attach_count, 1, "One ATTACH_ENERGY action for active slot");
+    }
+
+    // -------------------------- Player-choice plumbing --------------------------
+
+    fn assets_dir() -> std::path::PathBuf {
+        let mut d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.pop();
+        d.push("assets/cards");
+        d
+    }
+
+    #[test]
+    fn cyrus_emits_one_action_per_damaged_opponent_bench() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        let cyrus = db.get_by_id("a2-150").or_else(|| db.get_by_id("a2-185"))
+            .expect("Cyrus card not found");
+        let manaphy = db.get_by_id("a2-050").expect("Manaphy not found");
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Main;
+        state.turn_number = 3;
+        state.current_player = 0;
+
+        // P0 active to satisfy basic invariants.
+        let mp_card = manaphy.clone();
+        state.players[0].active = Some(PokemonSlot::new(mp_card.idx, mp_card.hp));
+        state.players[0].hand.push(cyrus.idx);
+
+        // Opponent: active + 2 bench, only one damaged.
+        let opp_active = manaphy.clone();
+        state.players[1].active = Some(PokemonSlot::new(opp_active.idx, opp_active.hp));
+        let healthy = PokemonSlot::new(opp_active.idx, opp_active.hp);
+        let mut damaged = PokemonSlot::new(opp_active.idx, opp_active.hp);
+        damaged.current_hp = 30; // < max → damaged
+        state.players[1].bench[0] = Some(healthy);
+        state.players[1].bench[1] = Some(damaged);
+
+        let actions = get_legal_actions(&state, &db);
+        let cyrus_actions: Vec<&Action> = actions.iter()
+            .filter(|a| a.kind == ActionKind::PlayCard
+                     && a.hand_index == Some(0))
+            .collect();
+        assert_eq!(cyrus_actions.len(), 1,
+            "Cyrus should emit exactly one PlayCard for the single damaged bench slot");
+        let chosen = cyrus_actions[0].target.expect("Cyrus action must carry a target");
+        assert!(chosen.is_bench(), "Cyrus target must be a bench slot");
+        assert_eq!(chosen.player, 1, "Cyrus targets opponent");
+        assert_eq!(chosen.bench_index(), 1, "Cyrus targets the damaged bench[1]");
+    }
+
+    #[test]
+    fn misty_emits_one_action_per_water_pokemon() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        let misty = db.get_by_id("a1-220").expect("Misty (a1-220) not found");
+        let squirtle = db.get_by_id("a1-053").expect("Squirtle (a1-053) not found");
+        let bulb = db.get_by_id("a1-001").expect("Bulbasaur (a1-001) not found");
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Main;
+        state.turn_number = 3;
+        state.current_player = 0;
+
+        // Active = Squirtle (Water); bench[0] = Bulbasaur (Grass); bench[1] = Squirtle (Water)
+        state.players[0].active = Some(PokemonSlot::new(squirtle.idx, squirtle.hp));
+        state.players[0].bench[0] = Some(PokemonSlot::new(bulb.idx, bulb.hp));
+        state.players[0].bench[1] = Some(PokemonSlot::new(squirtle.idx, squirtle.hp));
+        state.players[0].hand.push(misty.idx);
+
+        // Need an opponent active so the game state is valid.
+        state.players[1].active = Some(PokemonSlot::new(bulb.idx, bulb.hp));
+
+        let actions = get_legal_actions(&state, &db);
+        let misty_targets: Vec<crate::actions::SlotRef> = actions.iter()
+            .filter(|a| a.kind == ActionKind::PlayCard && a.hand_index == Some(0))
+            .filter_map(|a| a.target)
+            .collect();
+
+        // Should emit 2 actions: one for active Squirtle, one for bench[1] Squirtle.
+        // Bulbasaur on bench[0] should be excluded.
+        assert_eq!(misty_targets.len(), 2,
+            "Misty should emit one PlayCard per own Water Pokémon (got {:?})", misty_targets);
+        assert!(misty_targets.iter().any(|t| t.is_active()),
+            "Misty should include the active Water target");
+        assert!(misty_targets.iter().any(|t| t.is_bench() && t.bench_index() == 1),
+            "Misty should include bench[1] Water target");
+        assert!(!misty_targets.iter().any(|t| t.is_bench() && t.bench_index() == 0),
+            "Misty must NOT include bench[0] (Grass)");
+    }
+
+    #[test]
+    fn manaphy_attack_emits_one_action_per_bench_pair() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        let manaphy = db.get_by_id("a2-050").expect("Manaphy not found");
+        let bulb = db.get_by_id("a1-001").expect("Bulbasaur not found");
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Main;
+        state.turn_number = 3;
+        state.current_player = 0;
+
+        // Active is Manaphy with paid energy cost.
+        let mut active = PokemonSlot::new(manaphy.idx, manaphy.hp);
+        active.add_energy(Element::Water, 1);
+        state.players[0].active = Some(active);
+
+        // Three bench slots occupied → C(3,2) = 3 unordered pairs.
+        state.players[0].bench[0] = Some(PokemonSlot::new(bulb.idx, bulb.hp));
+        state.players[0].bench[1] = Some(PokemonSlot::new(bulb.idx, bulb.hp));
+        state.players[0].bench[2] = Some(PokemonSlot::new(bulb.idx, bulb.hp));
+
+        // Need an opponent active.
+        state.players[1].active = Some(PokemonSlot::new(bulb.idx, bulb.hp));
+
+        let actions = get_legal_actions(&state, &db);
+        let manaphy_attacks: Vec<&Action> = actions.iter()
+            .filter(|a| a.kind == ActionKind::Attack
+                     && a.target.map(|t| t.is_bench()).unwrap_or(false)
+                     && a.extra_target.is_some())
+            .collect();
+        assert_eq!(manaphy_attacks.len(), 3,
+            "Should emit C(3,2)=3 unordered pairs (got {})", manaphy_attacks.len());
+        // Verify the three unique pairs are {0,1}, {0,2}, {1,2}.
+        let mut pairs: Vec<(usize, usize)> = manaphy_attacks.iter()
+            .map(|a| {
+                let a0 = a.target.unwrap().bench_index();
+                let a1 = a.extra_target.unwrap().bench_index();
+                if a0 < a1 { (a0, a1) } else { (a1, a0) }
+            })
+            .collect();
+        pairs.sort();
+        assert_eq!(pairs, vec![(0,1), (0,2), (1,2)]);
     }
 
     #[test]

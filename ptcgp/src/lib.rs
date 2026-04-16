@@ -1,5 +1,6 @@
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
+#[cfg(feature = "python")]
 use std::sync::Arc;
 
 pub mod types;
@@ -14,6 +15,7 @@ pub mod runner;
 pub mod batch;
 pub mod decks;
 pub mod ui;
+pub mod ml;
 
 // ------------------------------------------------------------------ //
 // PyCardDb
@@ -168,6 +170,15 @@ fn run_game(
     let a1 = make_agent(agent1);
     let db_inner = db.inner.clone();
 
+    // Validate decks before starting the game (mirrors decks::validate_deck).
+    // NOTE: runner::run_game should also call validate_deck — see comment in decks.rs.
+    if let Err(e) = crate::decks::validate_deck(&db_inner, &deck0, &e0) {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!("deck0 invalid: {e}")));
+    }
+    if let Err(e) = crate::decks::validate_deck(&db_inner, &deck1, &e1) {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!("deck1 invalid: {e}")));
+    }
+
     py.allow_threads(move || {
         let result = crate::runner::run_game(
             &db_inner,
@@ -178,6 +189,7 @@ fn run_game(
             a0.as_ref(),
             a1.as_ref(),
             seed,
+            None, // Python entry — no human narration
         );
         Ok(PyGameResult {
             winner: result.winner,

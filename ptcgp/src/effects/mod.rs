@@ -20,6 +20,9 @@ pub struct EffectContext {
     pub source_ref: Option<crate::actions::SlotRef>,
     /// The slot that is the target of the effect (e.g. opponent active, or chosen bench slot).
     pub target_ref: Option<crate::actions::SlotRef>,
+    /// Secondary target slot — used by effects that pick two slots (e.g. Manaphy's
+    /// "Choose 2 of your Benched Pokémon" attach_water_two_bench attack).
+    pub extra_target_ref: Option<crate::actions::SlotRef>,
     pub extra: HashMap<String, i32>,
 }
 
@@ -29,6 +32,7 @@ impl EffectContext {
             acting_player,
             source_ref: None,
             target_ref: None,
+            extra_target_ref: None,
             extra: HashMap::new(),
         }
     }
@@ -40,6 +44,11 @@ impl EffectContext {
 
     pub fn with_target(mut self, tgt: crate::actions::SlotRef) -> Self {
         self.target_ref = Some(tgt);
+        self
+    }
+
+    pub fn with_extra_target(mut self, tgt: crate::actions::SlotRef) -> Self {
+        self.extra_target_ref = Some(tgt);
         self
     }
 }

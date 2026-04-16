@@ -81,7 +81,9 @@ pub fn apply_action(state: &mut GameState, db: &CardDb, action: &Action) {
 
         ActionKind::Attack => {
             let attack_index = action.attack_index.expect("Attack requires attack_index");
-            attack::execute_attack(state, db, attack_index, action.target);
+            attack::execute_attack(state, db, attack_index, action.target, action.extra_target);
+            // Attacking always ends the turn immediately — no further actions permitted.
+            turn::advance_turn(state, db);
         }
 
         ActionKind::EndTurn => {

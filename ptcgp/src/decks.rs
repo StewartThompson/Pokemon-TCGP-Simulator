@@ -1,6 +1,7 @@
 //! Built-in sample decks for the PTCGP simulator.
 
-use crate::types::Element;
+use crate::card::CardDb;
+use crate::types::{CardKind, Element, Stage};
 
 // ------------------------------------------------------------------ //
 // Grass deck — Bulbasaur line + Petilil/Lilligant + trainers
@@ -266,5 +267,173 @@ pub fn get_sample_deck(name: &str) -> Option<(&'static [&'static str], &'static 
         "greninja" | "water" | "gyarados"      => Some((GRENINJA_DECK,   GRENINJA_ENERGY)),
         "guzzlord" | "darkness" | "ultrabeast" => Some((GUZZLORD_DECK,   GUZZLORD_ENERGY)),
         _                                      => None,
+    }
+}
+
+// ------------------------------------------------------------------ //
+// Deck validation
+// ------------------------------------------------------------------ //
+
+/// Validate a deck against the PTCGP rules (RULES.md §2):
+///   * Exactly 20 cards.
+///   * No more than 2 copies of any card (by name — alternate art counts together).
+///   * At least one Basic Pokémon.
+///   * Energy types: between 1 and 3 inclusive.
+///
+/// NOTE: `runner::run_game` should also call this (currently it does not — see
+/// the Python entry in `lib.rs::run_game` which gates on this validator).
+pub fn validate_deck(db: &CardDb, deck: &[u16], energy_types: &[Element]) -> Result<(), String> {
+    // 1. Exactly 20 cards.
+    if deck.len() != 20 {
+        return Err(format!("deck must contain exactly 20 cards, got {}", deck.len()));
+    }
+
+    // 2. Max 2 copies of any card (by name — alternate art share the same name).
+    let mut counts: std::collections::HashMap<&str, u8> = std::collections::HashMap::new();
+    for &idx in deck {
+        let card = db
+            .try_get_by_idx(idx)
+            .ok_or_else(|| format!("card index {idx} not found in CardDb"))?;
+        let entry = counts.entry(card.name.as_str()).or_insert(0);
+        *entry += 1;
+        if *entry > 2 {
+            return Err(format!(
+                "more than 2 copies of '{}' in deck (found {})",
+                card.name, *entry
+            ));
+        }
+    }
+
+    // 3. At least one Basic Pokémon.
+    let has_basic = deck.iter().any(|&idx| {
+        match db.try_get_by_idx(idx) {
+            Some(c) => matches!(c.kind, CardKind::Pokemon) && c.stage == Some(Stage::Basic),
+            None => false,
+        }
+    });
+    if !has_basic {
+        return Err("deck must contain at least one Basic Pokémon".to_string());
+    }
+
+    // 4. Energy types: 1..=3.
+    if energy_types.is_empty() {
+        return Err("deck must declare at least 1 energy type".to_string());
+    }
+    if energy_types.len() > 3 {
+        return Err(format!(
+            "deck may declare at most 3 energy types, got {}",
+            energy_types.len()
+        ));
+    }
+
+    Ok(())
+}
+
+// ------------------------------------------------------------------ //
+// Tests
+// ------------------------------------------------------------------ //
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn assets_dir() -> PathBuf {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.pop(); // up to project root
+        d.push("assets/cards");
+        d
+    }
+
+    /// Resolve a sample deck's card-id slice into a Vec<u16> of CardDb indices.
+    fn resolve(db: &CardDb, ids: &[&str]) -> Vec<u16> {
+        ids.iter()
+            .filter_map(|id| db.get_idx_by_id(id))
+            .collect()
+    }
+
+    #[test]
+    fn valid_sample_deck_passes() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        let (ids, energy) = get_sample_deck("grass").unwrap();
+        let deck = resolve(&db, ids);
+        assert_eq!(deck.len(), 20, "sample grass deck should resolve to 20 cards");
+        assert!(validate_deck(&db, &deck, energy).is_ok());
+    }
+
+    #[test]
+    fn deck_size_not_20_fails() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        let (ids, energy) = get_sample_deck("grass").unwrap();
+        let mut deck = resolve(&db, ids);
+        deck.pop(); // 19 cards
+        let err = validate_deck(&db, &deck, energy).unwrap_err();
+        assert!(err.contains("20"), "expected size error, got: {err}");
+    }
+
+    #[test]
+    fn more_than_two_copies_fails() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        let bulba = db.get_idx_by_id("a1-001").unwrap();
+        // 20-card deck, 3 copies of Bulbasaur, plus 17 other unique-ish cards.
+        // We just take 17 non-Bulbasaur basics to fill — but easiest: 3 Bulbasaur +
+        // 17 Charmander would also exceed. Use 3 Bulba + 17 single copies of varied cards.
+        let mut deck = vec![bulba, bulba, bulba];
+        // Pad to 20 with single copies of distinct cards (skipping Bulbasaur).
+        for c in db.cards.iter() {
+            if deck.len() == 20 { break; }
+            if c.name == "Bulbasaur" { continue; }
+            deck.push(c.idx);
+        }
+        let err = validate_deck(&db, &deck, &[Element::Grass]).unwrap_err();
+        assert!(err.contains("more than 2 copies"), "expected copy error, got: {err}");
+    }
+
+    #[test]
+    fn zero_basics_fails() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        // Build a 20-card deck of trainer/non-Basic cards only.
+        // Use Potion (pa-001) — a Trainer item — 2x, and other trainers / evolved Pokémon.
+        let mut deck: Vec<u16> = Vec::new();
+        let mut name_counts: std::collections::HashMap<String, u8> =
+            std::collections::HashMap::new();
+        for c in db.cards.iter() {
+            if deck.len() == 20 { break; }
+            // Skip basic Pokémon entirely.
+            if matches!(c.kind, CardKind::Pokemon) && c.stage == Some(Stage::Basic) {
+                continue;
+            }
+            let entry = name_counts.entry(c.name.clone()).or_insert(0);
+            if *entry >= 2 { continue; }
+            *entry += 1;
+            deck.push(c.idx);
+        }
+        assert_eq!(deck.len(), 20, "should have constructed a 20-card non-Basic deck");
+        let err = validate_deck(&db, &deck, &[Element::Grass]).unwrap_err();
+        assert!(err.contains("Basic"), "expected basic error, got: {err}");
+    }
+
+    #[test]
+    fn more_than_three_energy_types_fails() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        let (ids, _) = get_sample_deck("grass").unwrap();
+        let deck = resolve(&db, ids);
+        let energy = vec![
+            Element::Grass,
+            Element::Fire,
+            Element::Water,
+            Element::Lightning,
+        ];
+        let err = validate_deck(&db, &deck, &energy).unwrap_err();
+        assert!(err.contains("3 energy types"), "expected energy error, got: {err}");
+    }
+
+    #[test]
+    fn zero_energy_types_fails() {
+        let db = CardDb::load_from_dir(&assets_dir());
+        let (ids, _) = get_sample_deck("grass").unwrap();
+        let deck = resolve(&db, ids);
+        let err = validate_deck(&db, &deck, &[]).unwrap_err();
+        assert!(err.contains("at least 1 energy"), "expected energy error, got: {err}");
     }
 }

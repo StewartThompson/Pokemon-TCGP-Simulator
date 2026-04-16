@@ -93,7 +93,8 @@ pub fn execute_attack(
     state: &mut GameState,
     db: &CardDb,
     attack_index: usize,
-    _sub_target: Option<SlotRef>,
+    sub_target: Option<SlotRef>,
+    extra_target: Option<SlotRef>,
 ) {
     // 1. Validate attacker.
     let attacker_card_idx = state
@@ -135,9 +136,15 @@ pub fn execute_attack(
         state.coin_flip_log.push(if heads {
             "🪙 Confusion flip: Heads! Attack succeeds".to_string()
         } else {
-            "🪙 Confusion flip: Tails! Attack hits self (30dmg)".to_string()
+            // PTCGP confusion has NO self-damage on tails — attack just fails.
+            "🪙 Confusion flip: Tails! Attack fails.".to_string()
         });
-        if !heads { return; }
+        if !heads {
+            // The attack failed but still ends the turn.  The runner's dispatch
+            // for ActionKind::Attack calls advance_turn after this returns,
+            // so we do not call advance_turn directly here.
+            return;
+        }
     }
 
     // 4. Get defender (opponent's active).
@@ -167,8 +174,9 @@ pub fn execute_attack(
     // 6. Compute damage modifier.
     let ctx = EffectContext {
         acting_player: state.current_player,
-        source_ref: None,
-        target_ref: None,
+        source_ref: Some(SlotRef::active(state.current_player)),
+        target_ref: sub_target,
+        extra_target_ref: extra_target,
         extra: HashMap::new(),
     };
     // Use pre-parsed attack effects (parsed at card load time).
@@ -208,7 +216,19 @@ pub fn execute_attack(
         }
     }
 
-    // 8. Apply damage.
+    // 8. Apply damage — first subtract the defender's incoming_damage_reduction
+    // (set by effects like PassiveIncomingDamageReduction), clamped at 0.
+    if !mod_skip && final_damage > 0 {
+        let reduction = state.players[opponent_idx]
+            .active
+            .as_ref()
+            .unwrap()
+            .incoming_damage_reduction as i16;
+        if reduction > 0 {
+            final_damage = (final_damage - reduction).max(0);
+        }
+    }
+
     let damage_dealt: i16;
     let opponent_ko: bool;
     if !mod_skip && final_damage > 0 {
@@ -251,7 +271,8 @@ pub fn execute_attack(
     let ctx_with_damage = EffectContext {
         acting_player: state.current_player,
         source_ref: Some(attacker_ref),
-        target_ref: None,
+        target_ref: sub_target,
+        extra_target_ref: extra_target,
         extra: {
             let mut m = modifier_result
                 .iter()
@@ -265,6 +286,10 @@ pub fn execute_attack(
 
     // Apply post-damage side effects (status conditions, splash, heal, etc.).
     apply_effects(state, db, &attack_effects, &ctx_with_damage);
+
+    // Resolve any KOs caused by the attack (or by retaliate damage) so the
+    // state is consistent before the runner advances the turn.
+    crate::engine::ko::check_and_handle_kos(state, db);
 }
 
 // ------------------------------------------------------------------ //

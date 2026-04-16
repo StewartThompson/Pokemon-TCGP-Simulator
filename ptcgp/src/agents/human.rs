@@ -188,7 +188,7 @@ fn build_menu_items(
     // ── Cards (PlayCard + Evolve) grouped by hand_index ───────────────
     let mut seen_hand: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
-    for (i, action) in actions.iter().enumerate() {
+    for action in actions.iter() {
         if !matches!(action.kind, ActionKind::PlayCard | ActionKind::Evolve) {
             continue;
         }
@@ -407,7 +407,6 @@ fn card_level1_label(
                     }
                 }
                 CardKind::Supporter => format!("Play {}", card.name),
-                _ => format!("Play {}", card.name),
             }
         }
 
@@ -522,12 +521,16 @@ fn read_choice(max: usize) -> Option<usize> {
     let _ = io::stdout().flush();
     let mut line = String::new();
     match io::stdin().lock().read_line(&mut line) {
-        Ok(0) => Some(0),
+        // EOF (Ctrl-D / closed stdin) — the trait can't return None for
+        // "exit cleanly", and silently returning Some(0) (= first option)
+        // can cause a runaway loop or unintended action. Make the failure
+        // mode loud and explicit instead.
+        Ok(0) => panic!("HumanAgent: stdin closed (EOF) while reading menu choice; exiting"),
         Ok(_) => {
             let n: usize = line.trim().parse().ok()?;
             if n >= 1 && n <= max { Some(n - 1) } else { None }
         }
-        Err(_) => Some(0),
+        Err(e) => panic!("HumanAgent: stdin read failed ({}); exiting", e),
     }
 }
 
@@ -536,11 +539,13 @@ fn read_choice_with_back(max: usize) -> Option<usize> {
     let _ = io::stdout().flush();
     let mut line = String::new();
     match io::stdin().lock().read_line(&mut line) {
-        Ok(0) => Some(0),
+        // See note in read_choice — fail loudly on EOF rather than silently
+        // mapping to "back" or the first option.
+        Ok(0) => panic!("HumanAgent: stdin closed (EOF) while reading menu choice; exiting"),
         Ok(_) => {
             let n: usize = line.trim().parse().ok()?;
             if n == 0 { None } else if n <= max { Some(n - 1) } else { None }
         }
-        Err(_) => Some(0),
+        Err(e) => panic!("HumanAgent: stdin read failed ({}); exiting", e),
     }
 }

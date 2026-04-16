@@ -2,6 +2,7 @@
 use rand::seq::SliceRandom;
 use rand::Rng;
 use crate::card::CardDb;
+use crate::constants::POINTS_TO_WIN;
 use crate::state::GameState;
 use crate::effects::EffectContext;
 use crate::types::{CardKind, Stage, Element};
@@ -26,7 +27,7 @@ fn discard_random_from_hand(state: &mut GameState, player: usize, count: u8) {
         }
         let len = state.players[player].hand.len();
         // Use rng to pick a random index
-        let idx = state.rng.gen::<usize>() %len;
+        let idx = state.rng.gen_range(0..len);
         let card = state.players[player].hand.remove(idx);
         state.players[player].discard.push(card);
     }
@@ -70,7 +71,7 @@ pub fn draw_basic_pokemon(state: &mut GameState, db: &CardDb, ctx: &EffectContex
     }
 
     // Pick a random Basic Pokemon from its positions
-    let pick_pos = basic_positions[state.rng.gen::<usize>() %basic_positions.len()];
+    let pick_pos = basic_positions[state.rng.gen_range(0..basic_positions.len())];
     let card = state.players[player].deck.remove(pick_pos);
     state.players[player].hand.push(card);
     // Shuffle remaining deck
@@ -81,15 +82,15 @@ pub fn draw_basic_pokemon(state: &mut GameState, db: &CardDb, ctx: &EffectContex
 // Iono / Mars / shuffle effects
 // ------------------------------------------------------------------ //
 
-/// Iono: each player shuffles hand into deck then draws cards equal to the
-/// OPPONENT's hand size (recorded before any shuffling takes place).
+/// Iono: each player shuffles their hand into their deck then draws cards
+/// equal to their OWN pre-shuffle hand size.
 pub fn iono_hand_shuffle(state: &mut GameState, ctx: &EffectContext) {
     let acting = ctx.acting_player;
     let opponent = 1 - acting;
 
-    // Record hand sizes BEFORE shuffling
-    let acting_draw_count = state.players[opponent].hand.len() as u8; // acting player draws opp count
-    let opponent_draw_count = state.players[acting].hand.len() as u8; // opponent draws acting count
+    // Record hand sizes BEFORE shuffling — each player draws their own count.
+    let acting_draw_count = state.players[acting].hand.len() as u8;
+    let opponent_draw_count = state.players[opponent].hand.len() as u8;
 
     // Both players shuffle hand into deck
     let acting_hand: Vec<u16> = state.players[acting].hand.drain(..).collect();
@@ -109,16 +110,25 @@ pub fn iono_hand_shuffle(state: &mut GameState, ctx: &EffectContext) {
     }
 }
 
-/// Mars: opponent discards a random card from hand, acting player draws 1.
+/// Mars: your opponent shuffles their hand into their deck and draws a card
+/// for each of their remaining points needed to win (POINTS_TO_WIN - opponent.points).
 pub fn mars_hand_shuffle(state: &mut GameState, ctx: &EffectContext) {
     let acting = ctx.acting_player;
     let opponent = 1 - acting;
 
-    // Opponent discards a random card
-    discard_random_from_hand(state, opponent, 1);
+    // Compute remaining points needed for opponent to win, BEFORE shuffling.
+    let opp_points = state.players[opponent].points;
+    let draw_count = POINTS_TO_WIN.saturating_sub(opp_points);
 
-    // Acting player draws 1
-    draw_one_for(state, acting);
+    // Opponent shuffles hand into deck.
+    let opp_hand: Vec<u16> = state.players[opponent].hand.drain(..).collect();
+    state.players[opponent].deck.extend(opp_hand);
+    state.players[opponent].deck.shuffle(&mut state.rng);
+
+    // Opponent draws one card per remaining point.
+    for _ in 0..draw_count {
+        draw_one_for(state, opponent);
+    }
 }
 
 /// Shuffle all hand cards back into deck.
@@ -165,7 +175,7 @@ pub fn maintenance_shuffle(state: &mut GameState, shuffle_count: u8, draw_count:
             break;
         }
         let len = state.players[player].hand.len();
-        let idx = state.rng.gen::<usize>() % len;
+        let idx = state.rng.gen_range(0..len);
         let card = state.players[player].hand.remove(idx);
         state.players[player].deck.push(card);
     }
@@ -222,7 +232,7 @@ pub fn search_deck_random_pokemon(state: &mut GameState, db: &CardDb, ctx: &Effe
         return;
     }
 
-    let pick = positions[state.rng.gen::<usize>() %positions.len()];
+    let pick = positions[state.rng.gen_range(0..positions.len())];
     let card = state.players[player].deck.remove(pick);
     state.players[player].hand.push(card);
     state.players[player].deck.shuffle(&mut state.rng);
@@ -248,7 +258,7 @@ pub fn search_deck_evolves_from(state: &mut GameState, db: &CardDb, name: &str, 
         return;
     }
 
-    let pick = positions[state.rng.gen::<usize>() %positions.len()];
+    let pick = positions[state.rng.gen_range(0..positions.len())];
     let card = state.players[player].deck.remove(pick);
     state.players[player].hand.push(card);
     state.players[player].deck.shuffle(&mut state.rng);
@@ -285,7 +295,7 @@ pub fn search_deck_multi_named(state: &mut GameState, db: &CardDb, names: &[Stri
         return;
     }
 
-    let pick = positions[state.rng.gen::<usize>() % positions.len()];
+    let pick = positions[state.rng.gen_range(0..positions.len())];
     let card = state.players[player].deck.remove(pick);
     state.players[player].hand.push(card);
     state.players[player].deck.shuffle(&mut state.rng);
@@ -308,7 +318,7 @@ pub fn search_deck_grass_pokemon(state: &mut GameState, db: &CardDb, ctx: &Effec
         return;
     }
 
-    let pick = positions[state.rng.gen::<usize>() %positions.len()];
+    let pick = positions[state.rng.gen_range(0..positions.len())];
     let card = state.players[player].deck.remove(pick);
     state.players[player].hand.push(card);
     state.players[player].deck.shuffle(&mut state.rng);
@@ -331,7 +341,7 @@ pub fn search_deck_random_basic(state: &mut GameState, db: &CardDb, ctx: &Effect
         return;
     }
 
-    let pick = positions[state.rng.gen::<usize>() %positions.len()];
+    let pick = positions[state.rng.gen_range(0..positions.len())];
     let card = state.players[player].deck.remove(pick);
     state.players[player].hand.push(card);
     state.players[player].deck.shuffle(&mut state.rng);
@@ -354,7 +364,7 @@ pub fn search_discard_random_basic(state: &mut GameState, db: &CardDb, ctx: &Eff
         return;
     }
 
-    let pick = positions[state.rng.gen::<usize>() %positions.len()];
+    let pick = positions[state.rng.gen_range(0..positions.len())];
     let card = state.players[player].discard.remove(pick);
     state.players[player].hand.push(card);
 }
@@ -363,10 +373,10 @@ pub fn search_discard_random_basic(state: &mut GameState, db: &CardDb, ctx: &Eff
 // Look / reveal effects (no-op or draw in simulation)
 // ------------------------------------------------------------------ //
 
-/// Look at top `count` cards of deck. In simulation (perfect info), just draw them.
-pub fn look_top_of_deck(state: &mut GameState, count: u8, ctx: &EffectContext) {
-    draw_cards(state, count, ctx);
-}
+/// Look at top `count` cards of deck. Information-only effect: in a perfect-info
+/// simulator the agent already has this information, so this is a no-op
+/// (cards remain in the deck, are NOT moved to hand).
+pub fn look_top_of_deck(_state: &mut GameState, _count: u8, _ctx: &EffectContext) {}
 
 /// No-op: reveal opponent's hand (perfect information in simulation).
 pub fn reveal_opponent_hand(_state: &mut GameState, _ctx: &EffectContext) {}
@@ -388,19 +398,21 @@ pub fn fishing_net(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
     }
 }
 
-/// Pokemon Communication: discard a Pokemon from hand, search deck for another Pokemon.
+/// Pokemon Communication: choose a Pokemon in hand, put it on top of your deck;
+/// search deck for a Pokemon, reveal it, put it in hand, then shuffle the deck.
 pub fn pokemon_communication(state: &mut GameState, db: &CardDb, ctx: &EffectContext) {
     let player = ctx.acting_player;
 
-    // Find a Pokemon in hand to discard
+    // Find a Pokemon in hand to return to deck.
     let hand_pokemon_pos = state.players[player].hand
         .iter()
         .position(|&cid| db.get_by_idx(cid).kind == CardKind::Pokemon);
 
     if let Some(pos) = hand_pokemon_pos {
-        let discarded = state.players[player].hand.remove(pos);
-        state.players[player].discard.push(discarded);
-        // Search deck for a different Pokemon
+        // Put the chosen Pokemon on top of the deck (top = last element since pop() is used).
+        let returned = state.players[player].hand.remove(pos);
+        state.players[player].deck.push(returned);
+        // Search deck for a Pokemon and put it in hand; search_deck_random_pokemon shuffles after.
         search_deck_random_pokemon(state, db, ctx);
     }
 }
@@ -429,7 +441,7 @@ pub fn discard_random_tool_from_hand(state: &mut GameState, db: &CardDb, ctx: &E
         return;
     }
 
-    let pick = tool_positions[state.rng.gen::<usize>() %tool_positions.len()];
+    let pick = tool_positions[state.rng.gen_range(0..tool_positions.len())];
     let card = state.players[player].hand.remove(pick);
     state.players[player].discard.push(card);
 }
@@ -448,7 +460,7 @@ pub fn discard_random_item_from_hand(state: &mut GameState, db: &CardDb, ctx: &E
         return;
     }
 
-    let pick = item_positions[state.rng.gen::<usize>() %item_positions.len()];
+    let pick = item_positions[state.rng.gen_range(0..item_positions.len())];
     let card = state.players[player].hand.remove(pick);
     state.players[player].discard.push(card);
 }
@@ -538,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn iono_swaps_hand_sizes() {
+    fn iono_each_player_draws_own_hand_size() {
         let mut state = GameState::new(3);
         // Player 0 has 3 cards in hand, player 1 has 5 cards in hand
         state.players[0].hand = vec![1, 2, 3];
@@ -551,10 +563,11 @@ mod tests {
 
         iono_hand_shuffle(&mut state, &ctx);
 
-        // Player 0 should have drawn 5 cards (opponent's old hand size)
-        assert_eq!(state.players[0].hand.len(), 5);
-        // Player 1 should have drawn 3 cards (acting player's old hand size)
-        assert_eq!(state.players[1].hand.len(), 3);
+        // Each player draws cards equal to their OWN pre-shuffle hand size.
+        // Player 0 had 3 in hand, draws 3.
+        assert_eq!(state.players[0].hand.len(), 3);
+        // Player 1 had 5 in hand, draws 5.
+        assert_eq!(state.players[1].hand.len(), 5);
     }
 
     #[test]

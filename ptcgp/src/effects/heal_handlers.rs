@@ -12,10 +12,36 @@ use crate::types::{Element, Stage};
 // Internal helper
 // ------------------------------------------------------------------ //
 
+/// Returns true if the given player currently cannot heal due to a
+/// `PassiveNoHealing` effect (e.g. Claydol Heal Block) being active.
+///
+/// PTCGP semantics: "heal blocked while this Pokemon is on the field"
+/// (continuous, not turn-based). The flag is reset at start_turn and
+/// re-applied each turn by the passive dispatch as a turn-based stand-in.
+fn cant_heal(state: &GameState, player: usize) -> bool {
+    state.players[player].cant_heal_this_turn
+}
+
+/// Log a "Healing blocked" event. Currently a no-op stub; replace with the
+/// project's event/log sink when one exists in this module's scope.
+fn log_heal_blocked(_state: &mut GameState, _player: usize) {
+    // Keep silent in release builds; print in debug.
+    #[cfg(debug_assertions)]
+    eprintln!("🚫 Healing blocked (PassiveNoHealing) for player {}", _player);
+}
+
 /// Clamp current_hp to [current_hp + amount, max_hp].
+/// Respects PassiveNoHealing on the slot's owning player: if that player
+/// cannot heal, this is a no-op and a "healing blocked" event is logged.
 fn heal_slot(state: &mut GameState, target: SlotRef, amount: i16) {
+    let owner = target.player as usize;
+    if cant_heal(state, owner) {
+        log_heal_blocked(state, owner);
+        return;
+    }
     if let Some(slot) = get_slot_mut(state, target) {
-        slot.current_hp = (slot.current_hp + amount).min(slot.max_hp);
+        let new_hp = (slot.current_hp.saturating_add(amount)).min(slot.max_hp);
+        slot.current_hp = new_hp;
     }
 }
 
@@ -107,13 +133,17 @@ pub fn heal_active(state: &mut GameState, amount: i16, ctx: &EffectContext) {
 /// Heal ALL of acting player's Pokemon (active + all bench slots).
 pub fn heal_all_own(state: &mut GameState, amount: i16, ctx: &EffectContext) {
     let p = ctx.acting_player;
+    if cant_heal(state, p) {
+        log_heal_blocked(state, p);
+        return;
+    }
     // Heal active
     if let Some(slot) = state.players[p].active.as_mut() {
-        slot.current_hp = (slot.current_hp + amount).min(slot.max_hp);
+        slot.current_hp = (slot.current_hp.saturating_add(amount)).min(slot.max_hp);
     }
     // Heal bench
     for slot in state.players[p].bench.iter_mut().flatten() {
-        slot.current_hp = (slot.current_hp + amount).min(slot.max_hp);
+        slot.current_hp = (slot.current_hp.saturating_add(amount)).min(slot.max_hp);
     }
 }
 
@@ -184,14 +214,23 @@ pub fn heal_stage2_target(state: &mut GameState, db: &CardDb, amount: i16, ctx: 
 }
 
 /// Heal acting player's Pokémon (from target_slot or active) and clear all status effects.
+/// If healing is blocked by `PassiveNoHealing`, the HP heal is skipped but the
+/// status clear still applies (status removal is not a heal).
 pub fn heal_and_cure_status(state: &mut GameState, amount: i16, ctx: &EffectContext) {
     let target = decode_target(ctx);
     // Safety: only heal own Pokémon.
     if target.player as usize != ctx.acting_player {
         return;
     }
+    let owner = target.player as usize;
+    let healing_blocked = cant_heal(state, owner);
+    if healing_blocked {
+        log_heal_blocked(state, owner);
+    }
     if let Some(slot) = crate::state::get_slot_mut(state, target) {
-        slot.current_hp = (slot.current_hp + amount).min(slot.max_hp);
+        if !healing_blocked {
+            slot.current_hp = (slot.current_hp.saturating_add(amount)).min(slot.max_hp);
+        }
         slot.status = 0;
     }
 }

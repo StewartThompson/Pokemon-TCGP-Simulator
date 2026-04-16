@@ -1,3 +1,36 @@
+use std::path::PathBuf;
+
+/// Locate the assets/cards directory.
+///
+/// Search order:
+/// 1. `PTCGP_ASSETS` environment variable
+/// 2. `assets/cards` relative to current working directory
+/// 3. Walk up from the current executable looking for `assets/cards`
+/// 4. Fall back to `../assets/cards` (sibling directory)
+fn find_assets_dir() -> PathBuf {
+    if let Ok(p) = std::env::var("PTCGP_ASSETS") {
+        return PathBuf::from(p);
+    }
+    let cwd_candidate = PathBuf::from("assets/cards");
+    if cwd_candidate.is_dir() {
+        return cwd_candidate;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+        for _ in 0..6 {
+            let candidate = dir.join("assets/cards");
+            if candidate.is_dir() {
+                return candidate;
+            }
+            match dir.parent() {
+                Some(p) => dir = p.to_path_buf(),
+                None => break,
+            }
+        }
+    }
+    PathBuf::from("../assets/cards")
+}
+
 fn main() {
     use std::sync::Arc;
     use std::time::Instant;
@@ -6,9 +39,7 @@ fn main() {
     use ptcgp::card::CardDb;
     use ptcgp::types::{Element, CardKind, Stage};
 
-    let db = Arc::new(CardDb::load_from_dir(
-        std::path::Path::new("../assets/cards")
-    ));
+    let db = Arc::new(CardDb::load_from_dir(&find_assets_dir()));
 
     // Build a deck where the energy matches the cards' attack costs.
     // Group basic Pokemon by their element and pick whichever has the most cards.

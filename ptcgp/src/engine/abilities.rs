@@ -54,6 +54,7 @@ pub fn use_ability(state: &mut GameState, db: &CardDb, slot_ref: SlotRef) {
         acting_player: slot_ref.player as usize,
         source_ref: Some(slot_ref),
         target_ref: None,
+        extra_target_ref: None,
         extra: Default::default(),
     };
 

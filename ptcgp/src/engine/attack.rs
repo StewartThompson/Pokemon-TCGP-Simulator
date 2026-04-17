@@ -290,6 +290,14 @@ pub fn execute_attack(
     // Resolve any KOs caused by the attack (or by retaliate damage) so the
     // state is consistent before the runner advances the turn.
     crate::engine::ko::check_and_handle_kos(state, db);
+
+    // PTCGP rule: an attack always ends the attacker's turn.  If the KO
+    // pushed us into AwaitingBenchPromotion, the runner can't `advance_turn`
+    // immediately — the defender must promote first.  Set a flag so the
+    // runner / MCTS knows to advance after promotion completes.
+    if state.phase == crate::types::GamePhase::AwaitingBenchPromotion {
+        state.attack_pending_advance = true;
+    }
 }
 
 // ------------------------------------------------------------------ //

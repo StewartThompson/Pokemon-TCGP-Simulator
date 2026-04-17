@@ -5,6 +5,8 @@
 use crate::card::CardDb;
 use crate::state::{GameState, get_slot_mut};
 use crate::actions::SlotRef;
+use crate::effects::{EffectKind, EffectContext};
+use crate::effects::dispatch::apply_effects;
 
 /// Evolve a Pokemon: replace the slot's card with the evolution card from hand.
 ///
@@ -79,6 +81,48 @@ pub fn evolve_pokemon(
 
     // Remove evo card from hand.
     state.players[current].hand.remove(hand_index);
+
+    // Fire any on-evolve triggered abilities on the newly-evolved card
+    // (e.g. Charmeleon B2b-008 Ignition: attach 1 Fire energy from the
+    // Energy Zone to the active Fire Pokémon when played to evolve).
+    trigger_on_evolve_abilities(state, db, target, evo_card_idx);
+}
+
+/// Fire any "on evolve" triggered ability effects on `evo_card_idx`.
+///
+/// Currently triggers `EffectKind::OnEvolveAttachEnergyActive`
+/// (Charmeleon Ignition).  The acting player is the player who controls
+/// the evolved slot (`target.player`).
+fn trigger_on_evolve_abilities(
+    state: &mut GameState,
+    db: &CardDb,
+    target: SlotRef,
+    evo_card_idx: u16,
+) {
+    let card = match db.try_get_by_idx(evo_card_idx) {
+        Some(c) => c,
+        None => return,
+    };
+    let ability = match card.ability.as_ref() {
+        Some(a) => a,
+        None => return,
+    };
+    let effects: Vec<EffectKind> = ability.effects.iter()
+        .filter(|e| matches!(e, EffectKind::OnEvolveAttachEnergyActive { .. }))
+        .cloned()
+        .collect();
+    if effects.is_empty() {
+        return;
+    }
+    let p = target.player as usize;
+    let ctx = EffectContext {
+        acting_player: p,
+        source_ref: Some(target),
+        target_ref: None,
+        extra_target_ref: None,
+        extra: Default::default(),
+    };
+    apply_effects(state, db, &effects, &ctx);
 }
 
 // ------------------------------------------------------------------ //

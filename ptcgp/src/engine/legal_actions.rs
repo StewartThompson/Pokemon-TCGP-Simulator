@@ -351,6 +351,18 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                     matches!(e, EffectKind::HealActive { .. })
                 });
 
+                // Flame Patch (B1-217) — only playable when there's a matching
+                // energy in the discard pile AND the active matches the gate.
+                let attach_discarded = card.trainer_effects.iter().find_map(|e| {
+                    if let EffectKind::AttachDiscardedEnergyActive {
+                        energy_type, required_active_type,
+                    } = e {
+                        Some((energy_type.clone(), required_active_type.clone()))
+                    } else {
+                        None
+                    }
+                });
+
                 if needs_heal_target {
                     // Emit one play_item per damaged own Pokemon (active + bench).
                     if let Some(ref active) = player.active {
@@ -372,6 +384,30 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                         if active.current_hp < active.max_hp {
                             actions.push(Action::play_item(i, None));
                         }
+                    }
+                } else if let Some((energy_type, required_active_type)) = attach_discarded {
+                    let el = match Element::from_str(&energy_type) {
+                        Some(e) => e,
+                        None => continue,
+                    };
+                    // Discard pile must have at least 1 of `el`.
+                    if player.energy_discard[el as usize] == 0 {
+                        continue;
+                    }
+                    // Active must match the gate (if non-empty).
+                    let active_ok = if required_active_type.is_empty() {
+                        player.active.is_some()
+                    } else {
+                        let req = match Element::from_str(&required_active_type) {
+                            Some(e) => e,
+                            None => continue,
+                        };
+                        player.active.as_ref()
+                            .and_then(|s| db.try_get_by_idx(s.card_idx).and_then(|c| c.element))
+                            == Some(req)
+                    };
+                    if active_ok {
+                        actions.push(Action::play_item(i, None));
                     }
                 } else {
                     // Generic item with no targeting restriction.

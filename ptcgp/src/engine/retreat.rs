@@ -119,9 +119,11 @@ pub fn retreat(state: &mut GameState, db: &CardDb, bench_slot: usize) {
         }
         // Discard the first `retreat_cost` tokens from the shuffled list.
         let discarded = &shuffled[..cost];
-        let active_slot = state.players[current].active.as_mut().unwrap();
+        let player = &mut state.players[current];
+        let active_slot = player.active.as_mut().unwrap();
         for &el in discarded {
             active_slot.remove_energy(el, 1);
+            player.energy_discard[el as usize] += 1;
         }
     }
 

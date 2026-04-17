@@ -14,7 +14,7 @@ use ptcgp::agents::human::HumanAgent;
 use ptcgp::agents::{Agent, HeuristicAgent, RandomAgent};
 use ptcgp::batch::run_batch_fixed_decks;
 use ptcgp::card::CardDb;
-use ptcgp::decks::get_sample_deck;
+use ptcgp::decks::{get_sample_deck, ALL_DECK_NAMES};
 use ptcgp::ml::{
     checkpoint::{latest_generation, load_generation},
     LeafValue, MctsAgent, MctsConfig, NnGreedyAgent,
@@ -55,9 +55,9 @@ enum Commands {
 struct SimulateArgs {
     #[arg(long, default_value_t = 100, help = "Number of games to simulate")]
     games: usize,
-    #[arg(long, default_value = "grass", help = "Deck for player 1 (grass|fire|mewtwo|nihilego|celebi|mew|dragonite|rampardos|greninja|guzzlord|test)")]
+    #[arg(long, default_value = "venusaur", help = "Deck for player 1 (venusaur|charizard|mewtwo|nihilego|celebi|mew|dragonite|rampardos|gyarados|guzzlord|pikachu|magnezone|suicune|megacharizard|test)")]
     deck1: String,
-    #[arg(long, default_value = "fire", help = "Deck for player 2 (grass|fire|mewtwo|nihilego|celebi|mew|dragonite|rampardos|greninja|guzzlord|test)")]
+    #[arg(long, default_value = "charizard", help = "Deck for player 2 (venusaur|charizard|mewtwo|nihilego|celebi|mew|dragonite|rampardos|gyarados|guzzlord|pikachu|magnezone|suicune|megacharizard|test)")]
     deck2: String,
     #[arg(
         long,
@@ -81,11 +81,11 @@ struct SimulateArgs {
 
 #[derive(Args)]
 struct PlayArgs {
-    #[arg(long, default_value = "grass", help = "Your deck (grass|fire|mewtwo|nihilego|celebi|mew|dragonite|rampardos|greninja|guzzlord|test)")]
+    #[arg(long, default_value = "venusaur", help = "Your deck (venusaur|charizard|mewtwo|nihilego|celebi|mew|dragonite|rampardos|gyarados|guzzlord|pikachu|magnezone|suicune|megacharizard|test)")]
     deck: String,
-    #[arg(long, default_value = "fire", help = "Opponent's deck (grass|fire|mewtwo|nihilego|celebi|mew|dragonite|rampardos|greninja|guzzlord|test)")]
+    #[arg(long, default_value = "charizard", help = "Opponent's deck (venusaur|charizard|mewtwo|nihilego|celebi|mew|dragonite|rampardos|gyarados|guzzlord|pikachu|magnezone|suicune|megacharizard|test)")]
     opponent: String,
-    #[arg(long, default_value = "heuristic", help = "Opponent AI (heuristic|random|mcts-raw[:sims]|mcts-raw-heur[:sims])")]
+    #[arg(long, default_value = "ai", help = "Opponent AI: ai (trained bot, default) | heuristic | random | mcts-raw[:sims] | mcts-raw-heur[:sims] | mcts:<gen>[:sims] | mcts-hybrid:<gen>[:sims[:weight[:depth]]]")]
     ai: String,
     #[arg(long, help = "Random seed (default: random; printed for replay)")]
     seed: Option<u64>,
@@ -131,10 +131,10 @@ struct EvalArgs {
     #[arg(long, default_value_t = 500)]
     games: usize,
     /// Deck for agent A (also used for both in mirror mode).
-    #[arg(long, default_value = "fire")]
+    #[arg(long, default_value = "charizard")]
     deck1: String,
     /// Deck for agent B.
-    #[arg(long, default_value = "fire")]
+    #[arg(long, default_value = "charizard")]
     deck2: String,
     /// Paired-seed mode: each logical game is played twice (agents swap sides)
     /// with identical RNG seeds. Halves variance in head-to-head eval.
@@ -152,9 +152,9 @@ struct EvalArgs {
 struct ProfileArgs {
     #[arg(long, default_value_t = 1000, help = "Number of games to run")]
     games: usize,
-    #[arg(long, default_value = "grass", help = "Deck for player 1 (grass|fire|mewtwo|nihilego|celebi|mew|dragonite|rampardos|greninja|guzzlord|test)")]
+    #[arg(long, default_value = "venusaur", help = "Deck for player 1 (venusaur|charizard|mewtwo|nihilego|celebi|mew|dragonite|rampardos|gyarados|guzzlord|pikachu|magnezone|suicune|megacharizard|test)")]
     deck1: String,
-    #[arg(long, default_value = "fire", help = "Deck for player 2 (grass|fire|mewtwo|nihilego|celebi|mew|dragonite|rampardos|greninja|guzzlord|test)")]
+    #[arg(long, default_value = "charizard", help = "Deck for player 2 (venusaur|charizard|mewtwo|nihilego|celebi|mew|dragonite|rampardos|gyarados|guzzlord|pikachu|magnezone|suicune|megacharizard|test)")]
     deck2: String,
     #[arg(long, default_value = "heuristic", help = "Agent for player 1 (random|heuristic)")]
     agent1: String,
@@ -376,7 +376,7 @@ fn load_gen_net(gen_str: &str) -> ptcgp::ml::ValueNet {
 /// Resolve a named deck to `(Vec<u16>, Vec<Element>)` using the CardDb.
 fn resolve_deck(db: &CardDb, name: &str) -> Result<(Vec<u16>, Vec<Element>), String> {
     let (ids, energy) = get_sample_deck(name)
-        .ok_or_else(|| format!("Unknown deck '{}'. Available: grass, fire, mewtwo, nihilego, celebi, mew, dragonite, rampardos, greninja", name))?;
+        .ok_or_else(|| format!("Unknown deck '{}'. Available: {}", name, ALL_DECK_NAMES.join(", ")))?;
 
     let indices: Vec<u16> = ids
         .iter()
@@ -520,10 +520,10 @@ fn cmd_play(args: PlayArgs) {
 // decks (round-robin tournament)
 // ------------------------------------------------------------------ //
 
-const ALL_DECKS: &[&str] = &[
-    "grass", "fire", "mewtwo", "nihilego", "celebi",
-    "rampardos", "guzzlord",
-];
+// Tournament deck list — uses the single source of truth from
+// `decks::ALL_DECK_NAMES` (re-exported as a local alias) so adding a deck
+// there automatically picks it up here too.
+const ALL_DECKS: &[&str] = ALL_DECK_NAMES;
 
 fn cmd_decks(args: DecksArgs) {
     if let Some(w) = args.workers {

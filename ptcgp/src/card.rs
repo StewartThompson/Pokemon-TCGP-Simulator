@@ -257,8 +257,16 @@ fn parse_cost(cost_list: &[String]) -> Vec<CostSymbol> {
 
 fn detect_is_passive(name: &str, effect_text: &str, handler: &str) -> bool {
     // Primary indicator: the handler string.
-    // Passive / auto-triggered handlers use a "passive_" prefix by convention.
-    if handler.split('|').any(|part| part.trim().starts_with("passive_")) {
+    // Auto-triggered abilities (passive, on-evolve, end-of-turn, etc.) cannot
+    // be activated by a player click — they fire on their own from the engine
+    // hook for the relevant event.  Identify them by handler-name prefix so
+    // legal_actions doesn't surface them as USE_ABILITY actions.
+    if handler.split('|').any(|part| {
+        let p = part.trim();
+        p.starts_with("passive_")
+            || p.starts_with("on_evolve_")
+            || p.starts_with("end_of_turn_")
+    }) {
         return true;
     }
     // Secondary: well-known passive effect-text patterns.
@@ -269,6 +277,11 @@ fn detect_is_passive(name: &str, effect_text: &str, handler: &str) -> bool {
     }
     // "At the end of [your/each] turn" → auto-triggers, not a player choice.
     if low.contains("at the end of") {
+        return true;
+    }
+    // "When you play this Pokemon … to evolve" → on-evolve trigger
+    // (e.g. Charmeleon B2b-008 Ignition).  Fires once at evolution time only.
+    if low.contains("when you play this") && low.contains("to evolve") {
         return true;
     }
     // Legacy Poké-Body naming convention.

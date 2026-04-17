@@ -422,8 +422,11 @@ impl<'a> Tree<'a> {
         {
             // 1. NN prediction on the leaf (before any further mutation).
             let v_net = self.net_value(state, db);
-            // 2. Short rollout from the leaf to sharpen the estimate.
-            let v_roll = self.do_rollout(state, db, rollout_depth, RolloutPolicy::Random);
+            // 2. Short heuristic rollout from the leaf to sharpen the estimate.
+            // Must use Heuristic policy — Random rollouts are near-zero signal
+            // in PTCGP (random vs random ≈ 50/50 from any state), which would
+            // drown out the net value rather than complement it.
+            let v_roll = self.do_rollout(state, db, rollout_depth, RolloutPolicy::Heuristic);
             // 3. Blend.
             let w = net_weight as f64;
             return (w * v_net + (1.0 - w) * v_roll).clamp(-1.0, 1.0);
@@ -439,12 +442,26 @@ impl<'a> Tree<'a> {
 
     /// Run NN forward on `state` and return the win value from the root
     /// player's perspective. 0 on any error or missing net.
+    ///
+    /// Training data (selfplay.rs) records BOTH players' decisions, each
+    /// from their own POV with win_target = that player's outcome.  The net
+    /// therefore learns: "given board features from the current mover's POV,
+    /// predict whether the current mover wins."
+    ///
+    /// We encode from `current_player`'s POV here to match that training
+    /// distribution.  The output is always "current_player wins probability",
+    /// which we negate when current_player ≠ root_player to convert to
+    /// root_player's perspective for backup.
     fn net_value(&self, state: &GameState, db: &CardDb) -> f64 {
         match self.net {
             Some(net) => {
+                let current_player = whose_turn(state);
                 let features =
-                    encode_with_cache(state, db, self.root_player, self.embed_cache);
-                net.win_value(&features).map(|v| v as f64).unwrap_or(0.0)
+                    encode_with_cache(state, db, current_player, self.embed_cache);
+                let v = net.win_value(&features).map(|v| v as f64).unwrap_or(0.0);
+                // v = current_player's estimated win probability.
+                // Convert to root_player's perspective for backup.
+                if current_player == self.root_player { v } else { -v }
             }
             None => 0.0,
         }
@@ -485,9 +502,18 @@ impl<'a> Tree<'a> {
         }
     }
 
-    /// Update stats along the path. Also increments the root node and each
-    /// expanded child node along the way — so UCB has correct parent-visit
-    /// counts on the next descent.
+    /// Update stats along the path.
+    ///
+    /// For each `(parent_node, edge_idx)` in `path`, we update both the edge
+    /// counters and the child node's own counters. This keeps `node.visits`
+    /// current so `ucb_select` computes the exploration term correctly at
+    /// every depth — without it, non-root nodes have visits=0 forever, the
+    /// `ln(N)` term collapses to zero, and UCB degenerates to pure greedy
+    /// exploitation (no exploration at all).
+    ///
+    /// The root node is updated explicitly at the top; it does NOT get a
+    /// second update from the first path entry because the path stores child
+    /// pointers, not self pointers — root is never its own child.
     fn backup(&mut self, root_idx: usize, path: &[(usize, usize)], value: f64) {
         self.nodes[root_idx].visits += 1;
         self.nodes[root_idx].value_sum += value;
@@ -624,6 +650,16 @@ fn apply_and_settle(state: &mut GameState, db: &CardDb, action: &Action) {
         if state.winner.is_none() && state.phase == GamePhase::Main {
             turn::advance_turn(state, db);
         }
+    }
+    // After a Promote that resolved an attack-induced KO, the attacker's
+    // turn ends (mirrors runner.rs). Without this the attacker would get to
+    // act again after the defender promoted from bench.
+    if kind == ActionKind::Promote
+        && state.attack_pending_advance
+        && state.phase == GamePhase::Main
+        && state.winner.is_none()
+    {
+        turn::advance_turn(state, db);
     }
 }
 

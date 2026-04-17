@@ -67,7 +67,7 @@ struct Args {
     #[arg(long, default_value_t = 240)]
     mcts_sims: usize,
     /// Comma-separated deck pool. Each game picks one uniformly.
-    #[arg(long, default_value = "fire")]
+    #[arg(long, default_value = "charizard")]
     deck_pool: String,
     /// Number of new generations to train this run.
     #[arg(long, default_value_t = 3)]
@@ -113,6 +113,39 @@ struct Args {
     /// full PTCGP game — enough to see tactical outcomes.
     #[arg(long, default_value_t = 25)]
     hybrid_rollout_depth: u32,
+    /// Use the heuristic agent (not random) for leaf rollouts.
+    ///
+    /// Random rollouts produce near-zero signal in PTCGP because random vs
+    /// random is ~50/50 from any state. Heuristic rollouts play sensibly so
+    /// the tree gets real win/loss signal. Essential before the NN is trained
+    /// well enough to replace rollouts entirely.
+    ///
+    /// Rule of thumb:
+    ///   Phase 1 (gen 1-10):  --heuristic-rollouts  (strong signal, MCTS > heuristic)
+    ///   Phase 2 (gen 11+):   --hybrid-weight 0.2   (blend NN + heuristic rollout)
+    ///   Phase 3 (gen 20+):   --hybrid-weight 0.5+  (NN starts to lead)
+    #[arg(long, default_value_t = false)]
+    heuristic_rollouts: bool,
+    /// Rollout depth cap for heuristic rollouts (default 40). Heuristic play
+    /// is slower per ply than random, but games typically resolve much faster,
+    /// so 40 plies gives a clean win/loss most of the time.
+    #[arg(long, default_value_t = 40)]
+    heuristic_rollout_depth: u32,
+    /// Who to evaluate the current gen against at the end of each generation.
+    ///
+    /// Accepted values:
+    ///   first             — play vs the earliest checkpoint in the dir (default)
+    ///   heuristic         — play vs HeuristicAgent
+    ///   gen:<N>           — play vs the MCTS bot from checkpoint gen_<N>
+    ///   prev:<K>          — play vs the bot from K generations ago (e.g. prev:5)
+    ///
+    /// Examples:
+    ///   --eval-opponent first      (always vs the oldest checkpoint — tracks absolute progress)
+    ///   --eval-opponent gen:5      (always vs gen 5)
+    ///   --eval-opponent prev:5     (vs whichever gen is 5 behind current)
+    ///   --eval-opponent heuristic  (vs HeuristicAgent)
+    #[arg(long, default_value = "first")]
+    eval_opponent: String,
 }
 
 // ------------------------------------------------------------------ //
@@ -213,7 +246,8 @@ fn main() -> candle_core::Result<()> {
     });
 
     // --- Bootstrap: always load/init on infer_device (CPU) for parallel inference ---
-    let (current_net, mut buffer, start_gen) = if args.resume {
+    // Also track games_played_base so metadata stays accurate on resume.
+    let (current_net, mut buffer, start_gen, games_played_base) = if args.resume {
         if let Some(latest) = latest_generation(&args.checkpoint_dir) {
             println!("Resuming from gen_{:03}/", latest);
             let (net, meta, buf) = load_generation(
@@ -230,14 +264,15 @@ fn main() -> candle_core::Result<()> {
                 meta.games_played,
                 meta.wall_time_s,
             );
-            (net, buf, latest)
+            let gp = meta.games_played;
+            (net, buf, latest, gp)
         } else {
             println!("--resume but no checkpoint found; starting from gen 0");
             let net = ValueNet::new(infer_device.clone())?;
             let meta = Meta::new(0);
             save_generation(&args.checkpoint_dir, 0, &net, None, &meta)
                 .map_err(|e| candle_core::Error::Msg(format!("save gen 0: {e}")))?;
-            (net, ReplayBuffer::new(args.replay_cap), 0)
+            (net, ReplayBuffer::new(args.replay_cap), 0, 0u64)
         }
     } else {
         println!("Initializing fresh gen_000/ (random weights)");
@@ -245,7 +280,7 @@ fn main() -> candle_core::Result<()> {
         let meta = Meta::new(0);
         save_generation(&args.checkpoint_dir, 0, &net, None, &meta)
             .map_err(|e| candle_core::Error::Msg(format!("save gen 0: {e}")))?;
-        (net, ReplayBuffer::new(args.replay_cap), 0)
+        (net, ReplayBuffer::new(args.replay_cap), 0, 0u64)
     };
 
     // net_arc is ALWAYS on infer_device (CPU). Rayon workers share it safely.
@@ -297,6 +332,8 @@ fn main() -> candle_core::Result<()> {
             args.league,
             args.hybrid_weight,
             args.hybrid_rollout_depth,
+            args.heuristic_rollouts,
+            args.heuristic_rollout_depth,
         );
         let sp_elapsed = sp_t.elapsed();
         println!(
@@ -349,24 +386,38 @@ fn main() -> candle_core::Result<()> {
         };
 
         // --- 3. Eval ---
-        // Eval also uses run_batch_fixed_decks (rayon) — pass the CPU net.
+        // Resolve the eval opponent (may load a past-gen checkpoint).
         let eval_t = Instant::now();
-        let (wr_heur, games_vs_heur) = eval_vs_heuristic(
+        let (opp_label, opp_agent) = resolve_eval_opponent(
+            &args.eval_opponent,
+            gen,
+            &args.checkpoint_dir,
             &db,
-            &embed_cache,
+            &infer_device,
+            args.mcts_sims,
+            args.hybrid_weight,
+            args.hybrid_rollout_depth,
+            args.heuristic_rollouts,
+            args.heuristic_rollout_depth,
+        );
+        let (wr, net_back) = eval_vs_agent(
+            &db,
             Arc::new(net_after_train),
+            opp_agent,
             &deck_pool,
             args.eval_games,
             args.mcts_sims,
             args.seed.wrapping_add(0xEEDA_F00D).wrapping_add(gen as u64),
             args.hybrid_weight,
             args.hybrid_rollout_depth,
+            args.heuristic_rollouts,
+            args.heuristic_rollout_depth,
             &infer_device,
         );
-        let (wr_heur, net_back) = (wr_heur, games_vs_heur);
         println!(
-            "  eval:      vs_heuristic = {:.1}%  ({} games, {:.1}s)",
-            wr_heur * 100.0,
+            "  eval:      vs_{} = {:.1}%  ({} games, {:.1}s)",
+            opp_label,
+            wr * 100.0,
             args.eval_games,
             eval_t.elapsed().as_secs_f64(),
         );
@@ -375,12 +426,13 @@ fn main() -> candle_core::Result<()> {
         let meta = Meta {
             generation: gen,
             feature_version: ptcgp::ml::features::FEATURE_VERSION,
-            games_played: (start_gen as u64) + (gen_offset as u64 + 1) * args.games_per_gen as u64,
+            games_played: games_played_base + (gen_offset as u64 + 1) * args.games_per_gen as u64,
             wall_time_s: t0.elapsed().as_secs_f64(),
             notes: format!(
-                "loss_win={:.4}, vs_heur={:.1}%",
+                "loss_win={:.4}, vs_{}={:.1}%",
                 stats.loss_win,
-                wr_heur * 100.0
+                opp_label,
+                wr * 100.0
             ),
         };
         save_generation(
@@ -427,33 +479,35 @@ fn collect_selfplay_samples(
     use_league: bool,
     hybrid_weight: f32,
     hybrid_rollout_depth: u32,
+    heuristic_rollouts: bool,
+    heuristic_rollout_depth: u32,
 ) -> Vec<ptcgp::ml::Sample> {
     let past_gens: Vec<u32> = past_nets.keys().copied().collect();
 
     (0..games)
         .into_par_iter()
         .flat_map(|i| {
-            // Leaf evaluation strategy:
-            //   weight == 1.0  → pure NN (no rollout)
-            //   weight == 0.0  → pure RandomRollout at full depth (200 plies)
-            //                    NOTE: HybridValueRollout with depth=25 would only
-            //                    run 25 plies, leaving most games unfinished and
-            //                    returning a near-zero prize-diff proxy — far weaker
-            //                    than the full RandomRollout that reaches game end.
-            //   0 < weight < 1 → blend NN + short rollout (AlphaGo-original style)
-            let leaf_value = if hybrid_weight >= 0.999 {
-                LeafValue::ValueNet
+            // Leaf evaluation strategy priority:
+            //  1. --heuristic-rollouts → HeuristicRollout (best signal before NN is trained)
+            //  2. hybrid_weight ≈ 1.0  → pure ValueNet leaf (fast, use once NN is reliable)
+            //  3. hybrid_weight ≈ 0.0  → RandomRollout full-depth (fallback, weak signal)
+            //  4. otherwise            → Hybrid NN + short random rollout (AlphaGo style)
+            let (leaf_value, depth_cap) = if heuristic_rollouts {
+                (LeafValue::HeuristicRollout, heuristic_rollout_depth)
+            } else if hybrid_weight >= 0.999 {
+                (LeafValue::ValueNet, 200)
             } else if hybrid_weight <= 0.001 {
-                LeafValue::RandomRollout
+                (LeafValue::RandomRollout, 200)
             } else {
-                LeafValue::HybridValueRollout {
+                (LeafValue::HybridValueRollout {
                     net_weight: hybrid_weight,
                     rollout_depth: hybrid_rollout_depth,
-                }
+                }, 200)
             };
             let config = MctsConfig {
                 total_sims: mcts_sims,
                 leaf_value_source: leaf_value,
+                rollout_depth_cap: depth_cap,
                 temperature: 1.0, // sample visits (exploration) during self-play
                 ..Default::default()
             };
@@ -516,49 +570,133 @@ fn collect_selfplay_samples(
 // Evaluation vs HeuristicAgent
 // ------------------------------------------------------------------ //
 
-/// Paired head-to-head vs heuristic. Returns (win_rate_of_mcts, net_returned).
+// ------------------------------------------------------------------ //
+// Flexible eval-opponent resolution
+// ------------------------------------------------------------------ //
+
+/// Resolve an `--eval-opponent` spec to a label string and a concrete agent.
 ///
-/// Uses `run_batch_fixed_decks` (rayon-parallel) — just like `ptcgp eval`.
-fn eval_vs_heuristic(
+/// Specs:
+///   `first`      → oldest checkpoint in the dir
+///   `heuristic`  → HeuristicAgent
+///   `gen:<N>`    → MCTS bot from gen_<N>
+///   `prev:<K>`   → MCTS bot from (current_gen - K)
+///
+/// Falls back to HeuristicAgent with a warning if the checkpoint can't be loaded.
+fn resolve_eval_opponent(
+    spec: &str,
+    current_gen: u32,
+    checkpoint_dir: &std::path::Path,
     db: &Arc<CardDb>,
-    _embed_cache: &Arc<Vec<[f32; ptcgp::ml::card_embed::CARD_EMBED_DIM]>>,
+    device: &Device,
+    mcts_sims: usize,
+    hybrid_weight: f32,
+    hybrid_rollout_depth: u32,
+    heuristic_rollouts: bool,
+    heuristic_rollout_depth: u32,
+) -> (String, Arc<dyn Agent>) {
+    // Resolve spec → Option<gen_number>.
+    let target_gen: Option<u32> = if spec == "heuristic" {
+        None // handled separately below
+    } else if spec == "first" {
+        let gens = list_generations(checkpoint_dir);
+        // Skip gen 0 (random weights) if there's anything better.
+        gens.into_iter().find(|&g| g > 0).or(Some(0))
+    } else if let Some(rest) = spec.strip_prefix("gen:") {
+        rest.parse::<u32>().ok()
+    } else if let Some(rest) = spec.strip_prefix("prev:") {
+        let k = rest.parse::<u32>().unwrap_or(5);
+        if current_gen > k { Some(current_gen - k) } else { Some(0) }
+    } else {
+        eprintln!("  warning: unknown eval-opponent spec '{}', falling back to heuristic", spec);
+        None
+    };
+
+    match target_gen {
+        None => {
+            // heuristic
+            ("heuristic".to_string(), Arc::new(HeuristicAgent) as Arc<dyn Agent>)
+        }
+        Some(g) => {
+            match load_generation(checkpoint_dir, g, device.clone(), 1) {
+                Ok((net, _, _)) => {
+                    let (leaf_value, depth_cap) = if heuristic_rollouts {
+                        (LeafValue::HeuristicRollout, heuristic_rollout_depth)
+                    } else if hybrid_weight >= 0.999 {
+                        (LeafValue::ValueNet, 200)
+                    } else if hybrid_weight <= 0.001 {
+                        (LeafValue::RandomRollout, 200)
+                    } else {
+                        (LeafValue::HybridValueRollout {
+                            net_weight: hybrid_weight,
+                            rollout_depth: hybrid_rollout_depth,
+                        }, 200)
+                    };
+                    let config = MctsConfig {
+                        total_sims: mcts_sims,
+                        leaf_value_source: leaf_value,
+                        rollout_depth_cap: depth_cap,
+                        temperature: 0.0,
+                        ..Default::default()
+                    };
+                    let agent = MctsAgent::new(config, db.clone()).with_net(Arc::new(net));
+                    (format!("gen_{:03}", g), Arc::new(agent) as Arc<dyn Agent>)
+                }
+                Err(e) => {
+                    eprintln!(
+                        "  warning: couldn't load gen_{:03} for eval ({}); falling back to heuristic",
+                        g, e
+                    );
+                    ("heuristic(fallback)".to_string(), Arc::new(HeuristicAgent) as Arc<dyn Agent>)
+                }
+            }
+        }
+    }
+}
+
+/// Head-to-head eval of `net` vs any `Arc<dyn Agent>` opponent.
+/// Returns `(win_rate_of_net_agent, net_returned)`.
+fn eval_vs_agent(
+    db: &Arc<CardDb>,
     net: Arc<ValueNet>,
+    opp_agent: Arc<dyn Agent>,
     deck_pool: &[DeckPair],
     games: usize,
     mcts_sims: usize,
     seed: u64,
     hybrid_weight: f32,
     hybrid_rollout_depth: u32,
+    heuristic_rollouts: bool,
+    heuristic_rollout_depth: u32,
     device: &Device,
 ) -> (f64, ValueNet) {
-    let leaf_value = if hybrid_weight >= 0.999 {
-        LeafValue::ValueNet
+    let (leaf_value, depth_cap) = if heuristic_rollouts {
+        (LeafValue::HeuristicRollout, heuristic_rollout_depth)
+    } else if hybrid_weight >= 0.999 {
+        (LeafValue::ValueNet, 200)
     } else if hybrid_weight <= 0.001 {
-        LeafValue::RandomRollout
+        (LeafValue::RandomRollout, 200)
     } else {
-        LeafValue::HybridValueRollout {
+        (LeafValue::HybridValueRollout {
             net_weight: hybrid_weight,
             rollout_depth: hybrid_rollout_depth,
-        }
+        }, 200)
     };
     let config = MctsConfig {
         total_sims: mcts_sims,
         leaf_value_source: leaf_value,
-        temperature: 0.0, // argmax at eval time
+        rollout_depth_cap: depth_cap,
+        temperature: 0.0,
         ..Default::default()
     };
     let mcts_agent: Arc<dyn Agent> =
         Arc::new(MctsAgent::new(config, db.clone()).with_net(net.clone()));
-    let heur_agent: Arc<dyn Agent> = Arc::new(HeuristicAgent);
 
-    // Spread eval games across every deck in the pool. Round-robin so
-    // each deck gets roughly the same number of games.
     let mut total_games: usize = 0;
     let mut mcts_wins: usize = 0;
     let games_per_deck = (games / deck_pool.len().max(1)).max(2);
     for (di, (deck, energy)) in deck_pool.iter().enumerate() {
         let d_seed = seed.wrapping_add(di as u64 * 99_991);
-        // Half as P0, half as P1 — cancels first-player advantage.
         let r1 = run_batch_fixed_decks(
             db.clone(),
             deck.clone(),
@@ -566,7 +704,7 @@ fn eval_vs_heuristic(
             energy.clone(),
             energy.clone(),
             mcts_agent.clone(),
-            heur_agent.clone(),
+            opp_agent.clone(),
             games_per_deck / 2,
             d_seed,
         );
@@ -576,7 +714,7 @@ fn eval_vs_heuristic(
             deck.clone(),
             energy.clone(),
             energy.clone(),
-            heur_agent.clone(),
+            opp_agent.clone(),
             mcts_agent.clone(),
             games_per_deck - games_per_deck / 2,
             d_seed ^ 0xABCD_1234,
@@ -591,15 +729,15 @@ fn eval_vs_heuristic(
     };
 
     drop(mcts_agent);
-    drop(heur_agent);
+    drop(opp_agent);
     let net_back = Arc::try_unwrap(net).unwrap_or_else(|arc| {
-        let tmp = std::env::temp_dir().join("ptcgp_net_recover.safetensors");
+        let tmp = std::env::temp_dir().join("ptcgp_net_recover2.safetensors");
         arc.save(&tmp).expect("recover save");
         let n = ValueNet::load(&tmp, device.clone()).expect("recover load");
         let _ = std::fs::remove_file(&tmp);
         n
     });
 
-    let _ = FEATURE_DIM; // quiet unused-import warning
+    let _ = FEATURE_DIM;
     (wr, net_back)
 }

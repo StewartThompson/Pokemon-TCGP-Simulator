@@ -44,3 +44,5 @@ models/
 legacy/
 *.log
 ptcgp/checkpoints*
+checkpoints*
+.claude

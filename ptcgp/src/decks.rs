@@ -7,7 +7,7 @@ use crate::types::{CardKind, Element, Stage};
 // Grass deck — Bulbasaur line + Petilil/Lilligant + trainers
 // ------------------------------------------------------------------ //
 
-pub const GRASS_DECK: &[&str] = &[
+pub const VENUSAUR_EX_DECK: &[&str] = &[
     "a1-001", "a1-001",   // Bulbasaur x2
     "a1-002", "a1-002",   // Ivysaur x2
     "a1-004", "a1-004",   // Venusaur ex x2
@@ -19,13 +19,13 @@ pub const GRASS_DECK: &[&str] = &[
     "pa-001", "pa-001",   // Potion x2
     "pa-007", "pa-007",   // Professor's Research x2
 ];
-pub const GRASS_ENERGY: &[Element] = &[Element::Grass];
+pub const VENUSAUR_EX_ENERGY: &[Element] = &[Element::Grass];
 
 // ------------------------------------------------------------------ //
 // Fire deck — Charmander/Charizard ex + Vulpix/Ninetales
 // ------------------------------------------------------------------ //
 
-pub const FIRE_DECK: &[&str] = &[
+pub const CHARIZARD_EX_DECK: &[&str] = &[
     "a1-230", "a1-230",     // Charmander x2
     "a2b-010", "a2b-010",   // Charizard ex x2
     "a1-037", "a1-037",     // Vulpix x2
@@ -37,7 +37,7 @@ pub const FIRE_DECK: &[&str] = &[
     "pa-001", "pa-001",     // Potion x2
     "a2-147", "a2-147",     // Giant Cape x2
 ];
-pub const FIRE_ENERGY: &[Element] = &[Element::Fire];
+pub const CHARIZARD_EX_ENERGY: &[Element] = &[Element::Fire];
 
 // ------------------------------------------------------------------ //
 // Mewtwo ex deck — Psychic powerhouse
@@ -46,16 +46,18 @@ pub const FIRE_ENERGY: &[Element] = &[Element::Fire];
 // ------------------------------------------------------------------ //
 
 pub const MEWTWO_EX_DECK: &[&str] = &[
-    "a1-129", "a1-129",   // Mewtwo ex x2   (Psydrive 150 dmg)
     "a1-130", "a1-130",   // Ralts x2       (Gardevoir base)
     "a1-131", "a1-131",   // Kirlia x2      (Gardevoir mid-stage)
     "a1-132", "a1-132",   // Gardevoir x2   (Psy Shadow: attach Psychic energy each turn)
+    "a1-129", "a1-129",   // Mewtwo ex x2   (Psydrive 150 dmg)
+    "a1-128",             // Mewtwo x1      (Basic backup attacker)
     "a1-225", "a1-225",   // Sabrina x2     (switch opponent's active)
-    "a1-223", "a1-223",   // Giovanni x2    (+10 damage this turn)
-    "a3-144", "a3-144",   // Rare Candy x2  (skip Kirlia; Ralts → Gardevoir)
     "pa-007", "pa-007",   // Professor's Research x2
+    "a1-223",             // Giovanni x1    (+10 damage this turn)
     "pa-005", "pa-005",   // Poké Ball x2
-    "pa-001", "pa-001",   // Potion x2
+    "pa-002", "pa-002",   // X Speed x2     (-1 retreat cost this turn)
+    "pa-006",             // Red Card x1    (opponent shuffles hand and draws 3)
+    "pa-001",             // Potion x1
 ];
 pub const MEWTWO_EX_ENERGY: &[Element] = &[Element::Psychic];
 
@@ -146,16 +148,23 @@ pub const MEW_EX_ENERGY: &[Element] = &[Element::Psychic];
 // ------------------------------------------------------------------ //
 
 pub const DRAGONITE_DECK: &[&str] = &[
-    "a1-183",  "a1-183",  // Dratini x2       (60 HP basic; Dragon path)
-    "a1-184",  "a1-184",  // Dragonair x2     (Stage 1 bridge)
-    "a1-185",  "a1-185",  // Dragonite x2     (Draco Meteor: 4× 50 random = 200 total spread)
-    "a3-124",  "a3-124",  // Drampa x2        (Berserk: 20+50=[70] or 120 when bench damaged)
-    "a3-144",  "a3-144",  // Rare Candy x2    (Dratini → Dragonite, skip Dragonair)
-    "a1-220",  "a1-220",  // Misty x2         (may attach up to 3 Water energy at once)
-    "a1-225",  "a1-225",  // Sabrina x2       (pull damaged bench target to active)
-    "a1-223",  "a1-223",  // Giovanni x2      (+10 damage this turn)
-    "pa-005",  "pa-005",  // Poké Ball x2
+    "a3b-051",            // Dratini x1       (A3b alt — 60 HP, Beat: 20 for Colorless)
+    "a1-183",             // Dratini x1       (A1 alt — both share name "Dratini" → 2 copies max)
+    "a3b-052",            // Dragonair x1     (A3b — Waterfall: 60 for Water+Colorless)
+    "a1-185",             // Dragonite x1     (A1 — Draco Meteor 4× 50 spread)
+    "a3b-053",            // Dragonite ex x1  (Giga Impact: 180 for W+L+C, can't attack next turn)
+    "a3a-021",            // Zeraora x1       (Lightning Basic accelerator)
+    "a3-066",             // Oricorio x1      (Safeguard: prevent damage from ex)
     "pa-007",  "pa-007",  // Professor's Research x2
+    "a1a-068",            // Leaf x1          (heal 30 HP)
+    "a2-154",             // Dawn x1          (move energy from bench to active Water/Metal)
+    "a2-150",             // Cyrus x1         (switch opponent bench → active)
+    "a2b-070",            // Pokémon Center Lady x1 (heal 60 HP)
+    "a3-155",             // Lillie x1        (draw cards based on hand)
+    "a2-155",             // Mars x1          (opponent discards a random card)
+    "pa-005",  "pa-005",  // Poké Ball x2
+    "a3-144",  "a3-144",  // Rare Candy x2    (skip Dragonair stage)
+    "a2-147",             // Giant Cape x1    (+20 max HP tool)
 ];
 pub const DRAGONITE_ENERGY: &[Element] = &[Element::Water, Element::Lightning];
 
@@ -172,19 +181,19 @@ pub const DRAGONITE_ENERGY: &[Element] = &[Element::Water, Element::Lightning];
 // ------------------------------------------------------------------ //
 
 pub const RAMPARDOS_DECK: &[&str] = &[
-    "a2-088",             // Cranidos x1      (Rampardos base via Skull Fossil)
-    "a2-089",  "a2-089",  // Rampardos x2     (Head Smash 130 for 2 Fighting)
     "a3a-060", "a3a-060", // Type: Null x2    (Silvally base; Colorless)
     "a3a-061", "a3a-061", // Silvally x2      (Brave Buddies: 50+50=100 with Ultra Beast bench)
-    "pa-005",             // Poké Ball x1
-    "a3-144",  "a3-144",  // Rare Candy x2    (Cranidos → Rampardos)
+    "a2-088",             // Cranidos x1      (Rampardos base via Skull Fossil)
+    "a2-089",  "a2-089",  // Rampardos x2     (Head Smash 130 for 2 Fighting)
     "a3a-067", "a3a-067", // Gladion x2       (search any card from deck)
-    "a2b-069",            // Iono x1          (shuffle both hands, draw equal counts)
-    "a2-155",             // Mars x1          (opponent discards a random card)
     "pa-007",  "pa-007",  // Professor's Research x2
-    "a2b-071",            // Red x1           (+20 damage next attack)
     "a1-225",             // Sabrina x1       (pull opponent bench target to active)
+    "a2-155",             // Mars x1          (opponent discards a random card)
+    "a2b-069",            // Iono x1          (shuffle both hands, draw equal counts)
+    "a2b-071",            // Red x1           (+20 damage next attack)
     "a2-144",  "a2-144",  // Skull Fossil x2  (search deck for Cranidos)
+    "a3-144",  "a3-144",  // Rare Candy x2    (Cranidos → Rampardos)
+    "pa-005",             // Poké Ball x1
 ];
 pub const RAMPARDOS_ENERGY: &[Element] = &[Element::Fighting];
 
@@ -199,7 +208,7 @@ pub const RAMPARDOS_ENERGY: &[Element] = &[Element::Fighting];
 // Leaf heals 30 HP to a Pokémon.  Misty accelerates Water energy.
 // ------------------------------------------------------------------ //
 
-pub const GRENINJA_DECK: &[&str] = &[
+pub const GYARADOS_EX_DECK: &[&str] = &[
     "a1a-017", "a1a-017", // Magikarp x2      (Gyarados ex base)
     "a1a-018", "a1a-018", // Gyarados ex x2   (main attacker — Water powerhouse)
     "a1a-056", "a1a-056", // Druddigon x2     (Dragon Tail: retaliate 20 on hit)
@@ -212,7 +221,7 @@ pub const GRENINJA_DECK: &[&str] = &[
     "pa-005",  "pa-005",  // Poké Ball x2
     "pa-007",  "pa-007",  // Professor's Research x2
 ];
-pub const GRENINJA_ENERGY: &[Element] = &[Element::Water];
+pub const GYARADOS_EX_ENERGY: &[Element] = &[Element::Water];
 
 // ------------------------------------------------------------------ //
 // Guzzlord ex deck — Ultra Beast control/poison
@@ -244,31 +253,157 @@ pub const GUZZLORD_DECK: &[&str] = &[
 pub const GUZZLORD_ENERGY: &[Element] = &[Element::Darkness];
 
 // ------------------------------------------------------------------ //
+// Pikachu ex deck — Lightning aggro
+//
+// Strategy: Pikachu ex's Circle Circuit hits 30× per Lightning bench
+// Pokémon (up to 90 with a full Lightning bench).  Zapdos ex Thundering
+// Hurricane fires 4 coin flips for 50 each (up to 200).  Blitzle/Zebstrika
+// add a Stage 1 line that punishes a stalled active.  Pincurchin's Zapping
+// Current pings 30 from the bench.  X Speed enables aggressive pivots so
+// Pikachu ex can stay active and keep hitting Circle Circuit.
+// ------------------------------------------------------------------ //
+
+pub const PIKACHU_EX_DECK: &[&str] = &[
+    "a1-105", "a1-105",   // Blitzle x2          (Zebstrika base)
+    "a1-106", "a1-106",   // Zebstrika x2        (Lightning Stage 1 attacker)
+    "a1-096", "a1-096",   // Pikachu ex x2       (Circle Circuit: 30× Lightning bench)
+    "a1-104", "a1-104",   // Zapdos ex x2        (Thundering Hurricane: 4× 50 coin flips)
+    "a1-112",             // Pincurchin x1       (Zapping Current: bench-friendly Lightning)
+    "a1-225", "a1-225",   // Sabrina x2          (switch opponent's active)
+    "pa-007", "pa-007",   // Professor's Research x2
+    "a1-223",             // Giovanni x1         (+10 damage this turn)
+    "pa-005", "pa-005",   // Poké Ball x2
+    "pa-002", "pa-002",   // X Speed x2          (-1 retreat cost — keep Pikachu ex active)
+    "pa-001", "pa-001",   // Potion x2
+];
+pub const PIKACHU_EX_ENERGY: &[Element] = &[Element::Lightning];
+
+// ------------------------------------------------------------------ //
+// Magnezone deck — Lightning Stage 2 + Shiinotic search
+//
+// Strategy: Magnezone Thunder Blast (110 for L+C+C, discards a Lightning).
+// Shiinotic's "Illuminate" pulls a random Pokémon from the deck each turn —
+// great consistency for evolving the Magneton line.  Morelull is the
+// Shiinotic base.  Oricorio's Safeguard hard-counters opposing ex
+// attackers.  Cyrus/Sabrina/Guzma/Mars provide control + disruption.
+// ------------------------------------------------------------------ //
+
+pub const MAGNEZONE_DECK: &[&str] = &[
+    "a1-097", "a1-097",   // Magnemite x2        (Magneton base)
+    "a1-098", "a1-098",   // Magneton x2         (Stage 1 bridge)
+    "a2-053", "a2-053",   // Magnezone x2        (Thunder Blast 110, discards a Lightning)
+    "a3-016", "a3-016",   // Morelull x2         (Shiinotic base)
+    "a3a-027", "a3a-027", // Shiinotic x2        (Illuminate: random Pokémon from deck → hand)
+    "a3-066",             // Oricorio x1         (Safeguard: prevent damage from ex attackers)
+    "pa-007", "pa-007",   // Professor's Research x2
+    "a2-150",             // Cyrus x1            (switch opponent bench → active)
+    "a1-225",             // Sabrina x1          (pull opponent bench to active)
+    "a3-151",             // Guzma x1            (switch opponent bench → active)
+    "a2-155",             // Mars x1             (opponent discards a random card)
+    "pa-005", "pa-005",   // Poké Ball x2
+    "pa-001",             // Potion x1
+];
+pub const MAGNEZONE_ENERGY: &[Element] = &[Element::Lightning];
+
+// ------------------------------------------------------------------ //
+// Suicune ex deck — Water Basics + Baxcalibur ramp
+//
+// Strategy: Baxcalibur's "Ice Maker" attaches a Water Energy from the
+// Energy Zone to the active Water Pokémon each turn — fueling Suicune ex
+// (Crystal Waltz: 20 per Benched Pokémon on either side) and Chien-Pao ex
+// (Diving Icicles: 130 to any of opponent's Pokémon for 3 Water).
+// Frigibax → Baxcalibur via Rare Candy.  Inflatable Boat reduces Water
+// retreat cost.  Starting Plains buffs every Basic by +20 HP.  Copycat /
+// Pokémon Center Lady / Cyrus add disruption + healing.
+// ------------------------------------------------------------------ //
+
+pub const SUICUNE_EX_DECK: &[&str] = &[
+    "b2a-034", "b2a-034", // Frigibax x2         (Baxcalibur base)
+    "b2a-036", "b2a-036", // Baxcalibur x2       (Ice Maker: attach Water energy each turn)
+    "a4a-020", "a4a-020", // Suicune ex x2       (Crystal Waltz: 20 per benched Pokémon)
+    "b2a-037",            // Chien-Pao ex x1     (Diving Icicles: 130 sniper for 3 Water)
+    "pa-007", "pa-007",   // Professor's Research x2
+    "b1-225",             // Copycat x1          (draw cards equal to opponent's hand)
+    "a2b-070",            // Pokémon Center Lady x1 (heal 60 HP)
+    "a2-150",             // Cyrus x1            (switch opponent bench → active)
+    "a3-144", "a3-144",   // Rare Candy x2       (Frigibax → Baxcalibur, skip Arctibax)
+    "pa-005", "pa-005",   // Poké Ball x2
+    "a2-147", "a2-147",   // Giant Cape x2       (+20 max HP tool)
+    "a4a-067",            // Inflatable Boat x1  (-1 Water retreat cost)
+    "b2-154",             // Starting Plains x1  (+20 HP to all Basics in play)
+];
+pub const SUICUNE_EX_ENERGY: &[Element] = &[Element::Water];
+
+// ------------------------------------------------------------------ //
+// Mega Charizard ex deck — Fire Stage 2 powerhouse
+//
+// Strategy: Charmeleon's "Ignition" ability attaches a Fire energy from
+// the Energy Zone whenever it's played to evolve.  Mega Charizard X ex
+// (Raging Blaze: 100, +80 if HP ≤ 110 — 180 when low) tanks and burns.
+// Mega Charizard Y ex (Crimson Dive: 250 with 50 self-damage) is the
+// nuke option.  Entei ex (Blazing Beatdown: 60+60 with extra Fire energy;
+// Legendary Pulse draws a card while active) provides a Basic attacker
+// + draw engine.  Flame Patch recycles Fire energy from discard.
+// May / Cyrus / Sabrina / Pokémon Center Lady / Copycat round out
+// search, switching, and recovery.
+// ------------------------------------------------------------------ //
+
+pub const MEGA_CHARIZARD_EX_DECK: &[&str] = &[
+    "a2b-008", "a2b-008", // Charmander x2       (A2b — Mega Charizard base)
+    "b2b-008", "b2b-008", // Charmeleon x2       (Ignition: attach Fire on evolve)
+    "b2b-009",            // Mega Charizard X ex x1 (Raging Blaze 100/+80 when low HP)
+    "b1a-014",            // Mega Charizard Y ex x1 (Crimson Dive 250, 50 self damage)
+    "a4a-010", "a4a-010", // Entei ex x2         (Blazing Beatdown 60+60 / Legendary Pulse draw)
+    "pa-007", "pa-007",   // Professor's Research x2
+    "a1-225",             // Sabrina x1          (pull opponent bench to active)
+    "a2-150",             // Cyrus x1            (switch opponent bench → active)
+    "a2b-070",            // Pokémon Center Lady x1 (heal 60 HP)
+    "b1-223",             // May x1              (search 2 random Pokémon, swap from hand)
+    "b1-225",             // Copycat x1          (draw cards equal to opponent's hand)
+    "pa-005", "pa-005",   // Poké Ball x2
+    "b1-217", "b1-217",   // Flame Patch x2      (recycle Fire energy from discard → active)
+    "a2-148",             // Rocky Helmet x1     (retaliate 20 on hit)
+];
+pub const MEGA_CHARIZARD_EX_ENERGY: &[Element] = &[Element::Fire];
+
+// ------------------------------------------------------------------ //
 // Lookup
 // ------------------------------------------------------------------ //
 
 /// Returns `(card_id_slice, energy_type_slice)` for a named deck.
 ///
 /// Recognised names (case-insensitive):
-///   `"grass"`, `"fire"`, `"mewtwo"`, `"nihilego"`, `"celebi"`,
-///   `"mew"`, `"dragonite"`, `"rampardos"`, `"greninja"`,
-///   `"guzzlord"`.
+///   `"venusaur"`, `"charizard"`, `"mewtwo"`, `"nihilego"`, `"celebi"`,
+///   `"mew"`, `"dragonite"`, `"rampardos"`, `"gyarados"`, `"guzzlord"`,
+///   `"pikachu"`, `"magnezone"`, `"suicune"`, `"megacharizard"`.
 /// Returns `None` for unknown names.
 pub fn get_sample_deck(name: &str) -> Option<(&'static [&'static str], &'static [Element])> {
     match name.trim().to_lowercase().as_str() {
-        "grass"                                => Some((GRASS_DECK,      GRASS_ENERGY)),
-        "fire"                                 => Some((FIRE_DECK,       FIRE_ENERGY)),
-        "mewtwo" | "psychic"                   => Some((MEWTWO_EX_DECK,  MEWTWO_EX_ENERGY)),
-        "nihilego" | "poison"                  => Some((NIHILEGO_DECK,   NIHILEGO_ENERGY)),
-        "celebi"                               => Some((CELEBI_EX_DECK,  CELEBI_EX_ENERGY)),
-        "mew"                                  => Some((MEW_EX_DECK,     MEW_EX_ENERGY)),
-        "dragonite" | "dragon"                 => Some((DRAGONITE_DECK,  DRAGONITE_ENERGY)),
-        "rampardos" | "fighting" | "fossil"    => Some((RAMPARDOS_DECK,  RAMPARDOS_ENERGY)),
-        "greninja" | "water" | "gyarados"      => Some((GRENINJA_DECK,   GRENINJA_ENERGY)),
-        "guzzlord" | "darkness" | "ultrabeast" => Some((GUZZLORD_DECK,   GUZZLORD_ENERGY)),
-        _                                      => None,
+        "venusaur"      => Some((VENUSAUR_EX_DECK,      VENUSAUR_EX_ENERGY)),
+        "charizard"     => Some((CHARIZARD_EX_DECK,     CHARIZARD_EX_ENERGY)),
+        "mewtwo"        => Some((MEWTWO_EX_DECK,        MEWTWO_EX_ENERGY)),
+        "nihilego"      => Some((NIHILEGO_DECK,         NIHILEGO_ENERGY)),
+        "celebi"        => Some((CELEBI_EX_DECK,        CELEBI_EX_ENERGY)),
+        "mew"           => Some((MEW_EX_DECK,           MEW_EX_ENERGY)),
+        "dragonite"     => Some((DRAGONITE_DECK,        DRAGONITE_ENERGY)),
+        "rampardos"     => Some((RAMPARDOS_DECK,        RAMPARDOS_ENERGY)),
+        "gyarados"      => Some((GYARADOS_EX_DECK,      GYARADOS_EX_ENERGY)),
+        "guzzlord"      => Some((GUZZLORD_DECK,         GUZZLORD_ENERGY)),
+        "pikachu"       => Some((PIKACHU_EX_DECK,       PIKACHU_EX_ENERGY)),
+        "magnezone"     => Some((MAGNEZONE_DECK,        MAGNEZONE_ENERGY)),
+        "suicune"       => Some((SUICUNE_EX_DECK,       SUICUNE_EX_ENERGY)),
+        "megacharizard" => Some((MEGA_CHARIZARD_EX_DECK, MEGA_CHARIZARD_EX_ENERGY)),
+        _               => None,
     }
 }
+
+/// Canonical list of all sample deck names.  Single source of truth so CLI
+/// help, error messages, and tournament lists stay in sync with `get_sample_deck`.
+pub const ALL_DECK_NAMES: &[&str] = &[
+    "venusaur", "charizard", "mewtwo", "nihilego", "celebi", "mew",
+    "dragonite", "rampardos", "gyarados", "guzzlord", "pikachu",
+    "magnezone", "suicune", "megacharizard",
+];
 
 // ------------------------------------------------------------------ //
 // Deck validation
@@ -355,16 +490,16 @@ mod tests {
     #[test]
     fn valid_sample_deck_passes() {
         let db = CardDb::load_from_dir(&assets_dir());
-        let (ids, energy) = get_sample_deck("grass").unwrap();
+        let (ids, energy) = get_sample_deck("venusaur").unwrap();
         let deck = resolve(&db, ids);
-        assert_eq!(deck.len(), 20, "sample grass deck should resolve to 20 cards");
+        assert_eq!(deck.len(), 20, "sample venusaur deck should resolve to 20 cards");
         assert!(validate_deck(&db, &deck, energy).is_ok());
     }
 
     #[test]
     fn deck_size_not_20_fails() {
         let db = CardDb::load_from_dir(&assets_dir());
-        let (ids, energy) = get_sample_deck("grass").unwrap();
+        let (ids, energy) = get_sample_deck("venusaur").unwrap();
         let mut deck = resolve(&db, ids);
         deck.pop(); // 19 cards
         let err = validate_deck(&db, &deck, energy).unwrap_err();
@@ -416,7 +551,7 @@ mod tests {
     #[test]
     fn more_than_three_energy_types_fails() {
         let db = CardDb::load_from_dir(&assets_dir());
-        let (ids, _) = get_sample_deck("grass").unwrap();
+        let (ids, _) = get_sample_deck("venusaur").unwrap();
         let deck = resolve(&db, ids);
         let energy = vec![
             Element::Grass,
@@ -431,7 +566,7 @@ mod tests {
     #[test]
     fn zero_energy_types_fails() {
         let db = CardDb::load_from_dir(&assets_dir());
-        let (ids, _) = get_sample_deck("grass").unwrap();
+        let (ids, _) = get_sample_deck("venusaur").unwrap();
         let deck = resolve(&db, ids);
         let err = validate_deck(&db, &deck, &[]).unwrap_err();
         assert!(err.contains("at least 1 energy"), "expected energy error, got: {err}");

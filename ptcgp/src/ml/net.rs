@@ -114,15 +114,12 @@ impl ValueNet {
     /// this file — `FEATURE_DIM`, `HIDDEN_DIM`. A file saved under a
     /// different layout will fail here with a shape-mismatch error.
     pub fn load(path: &Path, device: Device) -> Result<Self> {
+        // Load saved tensors into a fresh VarMap first, then build the net
+        // from that VarMap. This is the correct pattern: VarBuilder draws
+        // initial values from the VarMap, so `build` will consume the
+        // already-loaded weights rather than initialising randomly.
         let mut varmap = VarMap::new();
-        let vs = VarBuilder::from_varmap(&varmap, candle_core::DType::F32, &device);
-        let _ = Self::build(vs, VarMap::new(), device.clone())?;
-        // Populate varmap with the saved weights. Must be done *after*
-        // `build` so the VarBuilder registers all expected params first,
-        // then we overwrite with on-disk values.
         varmap.load(path)?;
-        // Rebuild the net with the freshly loaded varmap so the layers
-        // reference the correct underlying tensors.
         let vs = VarBuilder::from_varmap(&varmap, candle_core::DType::F32, &device);
         Self::build(vs, varmap, device)
     }

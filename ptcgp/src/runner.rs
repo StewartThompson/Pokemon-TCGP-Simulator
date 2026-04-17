@@ -309,6 +309,19 @@ fn run_main_loop(
                 // apply_action dispatches Promote → ko::promote_bench
                 mutations::apply_action(state, db, &action);
                 // After promotion phase returns to Main (or GameOver).
+                //
+                // If the promotion was caused by an attack (flag set in
+                // execute_attack), the attacker's turn must end now — an
+                // attack always ends the turn, even when bench promotion
+                // intervenes.  Without this, the attacker would get to keep
+                // acting after the defender promoted.
+                if state.attack_pending_advance
+                    && state.phase == GamePhase::Main
+                    && state.winner.is_none()
+                {
+                    turn::advance_turn(state, db);
+                    last_printed_player = None;
+                }
             }
 
             GamePhase::Main => {

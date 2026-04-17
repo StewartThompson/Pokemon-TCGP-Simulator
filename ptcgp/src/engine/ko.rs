@@ -31,6 +31,12 @@ fn award_ko(state: &mut GameState, db: &CardDb, ko_slot: SlotRef) -> (usize, u8,
     if let Some(tool_idx) = slot.tool_idx {
         state.players[loser].discard.push(tool_idx);
     }
+    // Move attached energies into the loser's energy discard pile so cards
+    // like Flame Patch ("attach a Fire Energy from your discard pile") can
+    // recover them later.
+    for i in 0..8 {
+        state.players[loser].energy_discard[i] += slot.energy[i];
+    }
 
     set_slot(state, ko_slot, None);
 

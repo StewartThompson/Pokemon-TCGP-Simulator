@@ -579,6 +579,147 @@ pub fn multi_coin_shuffle_opponent_cards(state: &mut GameState, count: u8, ctx: 
 }
 
 // ------------------------------------------------------------------ //
+// Element-gated energy attachment
+// ------------------------------------------------------------------ //
+
+/// Returns true when the acting player's active Pokémon's element matches
+/// `required_active_type` (or `required_active_type` is empty).
+fn active_matches_type(
+    state: &GameState,
+    db: &CardDb,
+    player: usize,
+    required_active_type: &str,
+) -> bool {
+    if required_active_type.is_empty() {
+        return state.players[player].active.is_some();
+    }
+    let required = match crate::types::Element::from_str(required_active_type) {
+        Some(e) => e,
+        None => return false,
+    };
+    let active = match state.players[player].active.as_ref() {
+        Some(s) => s,
+        None => return false,
+    };
+    let active_el = db.try_get_by_idx(active.card_idx).and_then(|c| c.element);
+    active_el == Some(required)
+}
+
+/// Attach 1 energy of `energy_type` from the Energy Zone to the acting
+/// player's active Pokémon, gated on the active's element matching
+/// `required_active_type`.  Used by ON-EVOLVE triggers (Charmeleon Ignition).
+pub fn attach_energy_to_active_typed(
+    state: &mut GameState,
+    db: &CardDb,
+    ctx: &EffectContext,
+    energy_type: &str,
+    required_active_type: &str,
+) {
+    let p = ctx.acting_player;
+    if !active_matches_type(state, db, p, required_active_type) {
+        return;
+    }
+    let element = match crate::types::Element::from_str(energy_type) {
+        Some(e) => e,
+        None => return,
+    };
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.add_energy(element, 1);
+    }
+}
+
+/// Flame Patch (B1-217): take 1 energy of `energy_type` *from the acting
+/// player's energy discard pile* and attach it to the active Pokémon.  No-op
+/// when the discard has none, or when the active doesn't match
+/// `required_active_type` (preserving the discarded energy untouched in that
+/// case so the agent can try again later).
+pub fn attach_discarded_energy_to_active(
+    state: &mut GameState,
+    db: &CardDb,
+    ctx: &EffectContext,
+    energy_type: &str,
+    required_active_type: &str,
+) {
+    let p = ctx.acting_player;
+    let element = match crate::types::Element::from_str(energy_type) {
+        Some(e) => e,
+        None => return,
+    };
+    // Discard pile must have at least 1 of `element`.
+    if state.players[p].energy_discard[element as usize] == 0 {
+        return;
+    }
+    // Active must match the required element gate.
+    if !active_matches_type(state, db, p, required_active_type) {
+        return;
+    }
+    state.players[p].energy_discard[element as usize] -= 1;
+    if let Some(slot) = state.players[p].active.as_mut() {
+        slot.add_energy(element, 1);
+    }
+}
+
+// ------------------------------------------------------------------ //
+// May (B1-223) — random deck/hand Pokémon swap
+// ------------------------------------------------------------------ //
+
+/// Supporter May: put `count` random Pokémon from the deck into the hand.
+/// For each Pokémon added in this way, shuffle a random Pokémon from the
+/// hand back into the deck.
+///
+/// Selection rules used (random-agent friendly approximation of "choose"):
+///   * Pull `count` random Pokémon from deck → hand.
+///   * Then for each one pulled, pick a random Pokémon currently in hand
+///     (post-pull) and shuffle it back into the deck.  If the hand has
+///     fewer Pokémon than were pulled, do as many swaps as possible.
+pub fn may_swap_pokemon(
+    state: &mut GameState,
+    db: &CardDb,
+    ctx: &EffectContext,
+    count: u8,
+) {
+    let p = ctx.acting_player;
+
+    // 1. Pull up to `count` random Pokémon from deck → hand.
+    let mut pulled: u8 = 0;
+    for _ in 0..count {
+        let pokemon_in_deck: Vec<usize> = state.players[p].deck.iter().enumerate()
+            .filter(|(_, &idx)| db.try_get_by_idx(idx).map(|c| c.kind == CardKind::Pokemon).unwrap_or(false))
+            .map(|(i, _)| i)
+            .collect();
+        if pokemon_in_deck.is_empty() {
+            break;
+        }
+        let chosen = pokemon_in_deck[state.rng.gen_range(0..pokemon_in_deck.len())];
+        let card_idx = state.players[p].deck.remove(chosen);
+        state.players[p].hand.push(card_idx);
+        pulled += 1;
+    }
+
+    if pulled == 0 {
+        return;
+    }
+
+    // Reshuffle deck since we removed cards from arbitrary positions.
+    state.players[p].deck.shuffle(&mut state.rng);
+
+    // 2. For each Pokémon pulled, pick a random Pokémon in hand → shuffle into deck.
+    for _ in 0..pulled {
+        let pokemon_in_hand: Vec<usize> = state.players[p].hand.iter().enumerate()
+            .filter(|(_, &idx)| db.try_get_by_idx(idx).map(|c| c.kind == CardKind::Pokemon).unwrap_or(false))
+            .map(|(i, _)| i)
+            .collect();
+        if pokemon_in_hand.is_empty() {
+            break;
+        }
+        let chosen = pokemon_in_hand[state.rng.gen_range(0..pokemon_in_hand.len())];
+        let card_idx = state.players[p].hand.remove(chosen);
+        state.players[p].deck.push(card_idx);
+        state.players[p].deck.shuffle(&mut state.rng);
+    }
+}
+
+// ------------------------------------------------------------------ //
 // Unit tests
 // ------------------------------------------------------------------ //
 

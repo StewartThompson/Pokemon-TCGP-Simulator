@@ -191,6 +191,9 @@ pub enum EffectKind {
     BonusEqualToDamageTaken,
     BonusIfExtraEnergy { threshold: i16, bonus: i16, energy_type: String },
     BonusIfNamedInPlay { bonus: i16, names: Vec<String> },
+    /// +bonus damage when this Pokémon's current HP is ≤ threshold
+    /// (e.g. Mega Charizard X ex Raging Blaze: 100 + 80 when HP ≤ 110).
+    BonusIfSelfHpAtOrBelow { threshold: i16, bonus: i16 },
     HalveOpponentHp,
     DoubleHeadsInstantKo,
 
@@ -248,6 +251,22 @@ pub enum EffectKind {
     BeastWallProtection,
     RareCandyEvolve,
     HpBonus { amount: i16 },
+    /// At end of acting player's turn, if this Pokémon is in the Active Spot,
+    /// draw `count` card(s) (Suicune ex / Entei ex Legendary Pulse).
+    EndOfTurnIfActiveDraw { count: u8 },
+    /// When the host Pokémon is played from hand to evolve, attach 1 energy of
+    /// `energy_type` from the Energy Zone to the active Pokémon — but only
+    /// if the active Pokémon's element matches `required_active_type`
+    /// (Charmeleon B2b-008 Ignition).
+    OnEvolveAttachEnergyActive { energy_type: String, required_active_type: String },
+    /// Trainer Item: attach 1 energy of `energy_type` to the active Pokémon
+    /// (treated as coming from the discard pile — engine doesn't track
+    /// discarded energies, so this attaches from the unlimited virtual pool).
+    /// Only fires if active matches `required_active_type` (Flame Patch B1-217).
+    AttachDiscardedEnergyActive { energy_type: String, required_active_type: String },
+    /// Supporter (May B1-223): put `count` random Pokémon from deck into hand,
+    /// then for each one added, shuffle a random Pokémon from hand back into deck.
+    MaySwapPokemon { count: u8 },
 
     // --- Passive ability effects ---
     PassiveDamageReduction { amount: i16 },
@@ -677,6 +696,10 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
             bonus: get_i16(&params, "bonus", 0),
             names: get_names(&params, "names"),
         },
+        "bonus_if_self_hp_at_or_below" => EffectKind::BonusIfSelfHpAtOrBelow {
+            threshold: get_i16(&params, "threshold", 0),
+            bonus: get_i16(&params, "bonus", 0),
+        },
         "halve_opponent_hp" => EffectKind::HalveOpponentHp,
         "double_heads_instant_ko" => EffectKind::DoubleHeadsInstantKo,
 
@@ -783,6 +806,20 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         "rare_candy_evolve" => EffectKind::RareCandyEvolve,
         "hp_bonus" => EffectKind::HpBonus {
             amount: get_i16(&params, "amount", 0),
+        },
+        "end_of_turn_if_active_draw" => EffectKind::EndOfTurnIfActiveDraw {
+            count: get_u8(&params, "count", 1),
+        },
+        "on_evolve_attach_energy_active" => EffectKind::OnEvolveAttachEnergyActive {
+            energy_type: get_str(&params, "energy_type"),
+            required_active_type: get_str(&params, "required_active_type"),
+        },
+        "attach_discarded_energy_active" => EffectKind::AttachDiscardedEnergyActive {
+            energy_type: get_str(&params, "energy_type"),
+            required_active_type: get_str(&params, "required_active_type"),
+        },
+        "may_swap_pokemon" => EffectKind::MaySwapPokemon {
+            count: get_u8(&params, "count", 2),
         },
 
         // Passives

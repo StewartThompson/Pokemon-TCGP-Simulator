@@ -128,7 +128,7 @@
       {
         "name": "Legendary Pulse",
         "effect": "At the end of your turn, if this Pokemon is in the Active Spot, draw a card.",
-        "handler": ""
+        "handler": "end_of_turn_if_active_draw(count=1)"
       }
     ],
     "evolvesFrom": null,
@@ -250,6 +250,227 @@
     ],
     "evolvesFrom": null,
     "rarity": "Common"
+  },
+  {
+    "id": "b2b-008",
+    "name": "Charmeleon",
+    "element": "Fire",
+    "type": "Pokemon",
+    "subtype": "Stage 1",
+    "health": 80,
+    "set": "Mega Shine (B2b)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Slash",
+        "damage": "40",
+        "cost": ["Fire", "Fire"],
+        "handler": ""
+      }
+    ],
+    "retreatCost": "2",
+    "weakness": "Water",
+    "abilities": [
+      {
+        "name": "Ignition",
+        "effect": "Once during your turn, when you play this Pokemon from your hand to evolve 1 of your Pokemon, you may take a Fire Energy from your Energy Zone and attach it to your Active Fire Pokemon.",
+        "handler": "on_evolve_attach_energy_active(energy_type=Fire, required_active_type=Fire)"
+      }
+    ],
+    "evolvesFrom": "Charmander",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": "b2b-009",
+    "name": "Mega Charizard X ex",
+    "element": "Fire",
+    "type": "Pokemon",
+    "subtype": "Stage 2",
+    "health": 220,
+    "set": "Mega Shine (B2b)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Raging Blaze",
+        "damage": "100",
+        "cost": ["Fire", "Fire", "Fire"],
+        "effect": "If this Pokemon's remaining HP is 110 or less, this attack does 80 more damage.",
+        "handler": "bonus_if_self_hp_at_or_below(threshold=110, bonus=80)"
+      }
+    ],
+    "retreatCost": "2",
+    "weakness": "Water",
+    "abilities": [],
+    "evolvesFrom": "Charmeleon",
+    "rarity": "Rare EX"
+  },
+  {
+    "id": "b1a-014",
+    "name": "Mega Charizard Y ex",
+    "element": "Fire",
+    "type": "Pokemon",
+    "subtype": "Stage 2",
+    "health": 220,
+    "set": "Crimson Blaze (B1a)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Crimson Dive",
+        "damage": "250",
+        "cost": ["Fire", "Fire", "Fire", "Colorless"],
+        "effect": "This Pokemon also does 50 damage to itself.",
+        "handler": "self_damage(amount=50)"
+      }
+    ],
+    "retreatCost": "2",
+    "weakness": "Water",
+    "abilities": [],
+    "evolvesFrom": "Charmeleon",
+    "rarity": "Rare EX"
+  },
+  {
+    "id": "a4a-010",
+    "name": "Entei ex",
+    "element": "Fire",
+    "type": "Pokemon",
+    "subtype": "Basic",
+    "health": 140,
+    "set": "Secluded Springs (A4a)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Blazing Beatdown",
+        "damage": "60",
+        "cost": ["Fire", "Fire"],
+        "effect": "If this Pokemon has at least 2 extra Fire Energy attached, this attack does 60 more damage.",
+        "handler": "bonus_if_extra_energy(threshold=2, bonus=60, energy_type=Fire)"
+      }
+    ],
+    "retreatCost": "2",
+    "weakness": "Water",
+    "abilities": [
+      {
+        "name": "Legendary Pulse",
+        "effect": "At the end of your turn, if this Pokemon is in the Active Spot, draw a card.",
+        "handler": "end_of_turn_if_active_draw(count=1)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Rare EX"
+  },
+  {
+    "id": "b1-217",
+    "name": "Flame Patch",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Item",
+    "health": null,
+    "set": "Mega Rising (B1)",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "Flame Patch",
+        "effect": "Attach a Fire Energy from your discard pile to your Active Fire Pokemon.",
+        "handler": "attach_discarded_energy_active(energy_type=Fire, required_active_type=Fire)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Uncommon"
+  },
+  {
+    "id": "b1-223",
+    "name": "May",
+    "element": null,
+    "type": "Trainer",
+    "subtype": "Supporter",
+    "health": null,
+    "set": "Mega Rising (B1)",
+    "pack": null,
+    "attacks": [],
+    "retreatCost": null,
+    "weakness": null,
+    "abilities": [
+      {
+        "name": "May",
+        "effect": "Put 2 random Pokemon from your deck into your hand. For each Pokemon you put into your hand in this way, choose a Pokemon to shuffle from your hand into your deck.",
+        "handler": "may_swap_pokemon(count=2)"
+      }
+    ],
+    "evolvesFrom": null,
+    "rarity": "Uncommon"
+  },
+  {
+    "id": "a3b-051",
+    "name": "Dratini",
+    "element": "Dragon",
+    "type": "Pokemon",
+    "subtype": "Basic",
+    "health": 60,
+    "set": "Eevee Grove (A3b)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Beat",
+        "damage": "20",
+        "cost": ["Colorless"],
+        "handler": ""
+      }
+    ],
+    "retreatCost": "1",
+    "weakness": null,
+    "abilities": [],
+    "evolvesFrom": null,
+    "rarity": "Common"
+  },
+  {
+    "id": "a3b-052",
+    "name": "Dragonair",
+    "element": "Dragon",
+    "type": "Pokemon",
+    "subtype": "Stage 1",
+    "health": 90,
+    "set": "Eevee Grove (A3b)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Waterfall",
+        "damage": "60",
+        "cost": ["Water", "Colorless"],
+        "handler": ""
+      }
+    ],
+    "retreatCost": "1",
+    "weakness": null,
+    "abilities": [],
+    "evolvesFrom": "Dratini",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": "a3b-053",
+    "name": "Dragonite ex",
+    "element": "Dragon",
+    "type": "Pokemon",
+    "subtype": "Stage 2",
+    "health": 180,
+    "set": "Eevee Grove (A3b)",
+    "pack": null,
+    "attacks": [
+      {
+        "name": "Giga Impact",
+        "damage": "180",
+        "cost": ["Water", "Lightning", "Colorless"],
+        "effect": "During your next turn, this Pokemon can't attack.",
+        "handler": "self_cant_attack_next_turn"
+      }
+    ],
+    "retreatCost": "2",
+    "weakness": null,
+    "abilities": [],
+    "evolvesFrom": "Dragonair",
+    "rarity": "Rare EX"
   },
   {
     "id": "b2-154",

@@ -121,6 +121,12 @@ pub struct PlayerState {
     pub hand: Vec<u16>,
     pub deck: Vec<u16>,
     pub discard: Vec<u16>,
+    /// Energies that have been removed from this player's Pokémon (by attacks
+    /// that discard energy, by KO, or by retreat) and are now "in the discard
+    /// pile".  PTCGP doesn't have energy cards, so this is the only way a
+    /// card like Flame Patch ("attach a Fire Energy from your discard pile")
+    /// can find energy to recycle.  Indexed by `Element as usize`.
+    pub energy_discard: crate::types::EnergyArray,
     pub points: u8,
     pub energy_types: Vec<Element>,
     pub energy_available: Option<Element>,
@@ -159,6 +165,7 @@ impl Default for PlayerState {
             hand: Vec::new(),
             deck: Vec::new(),
             discard: Vec::new(),
+            energy_discard: [0; 8],
             points: 0,
             energy_types: Vec::new(),
             energy_available: None,
@@ -240,6 +247,11 @@ pub struct GameState {
     /// Drained and displayed by the runner after each action in human-play mode.
     /// Ignored (left empty) in tournament simulations.
     pub coin_flip_log: Vec<String>,
+    /// True when an attack KO'd the defender's Active and put the game into
+    /// `AwaitingBenchPromotion`.  After the defender promotes, the runner /
+    /// MCTS advances the turn (an attack always ends the attacker's turn,
+    /// even when promotion intervenes).  Cleared inside `advance_turn`.
+    pub attack_pending_advance: bool,
 }
 
 impl GameState {
@@ -253,6 +265,7 @@ impl GameState {
             winner: None,
             rng: SmallRng::seed_from_u64(seed),
             coin_flip_log: Vec::new(),
+            attack_pending_advance: false,
         }
     }
 

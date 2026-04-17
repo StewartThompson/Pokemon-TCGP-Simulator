@@ -388,20 +388,17 @@ pub fn multi_coin_attach_bench(
 // ------------------------------------------------------------------ //
 
 /// Discard 1 random energy from the source Pokémon (used when energy_type=Random).
+/// Discarded energy is added to the source Pokémon's owner's energy_discard pile.
 pub fn discard_random_energy_self(state: &mut GameState, ctx: &EffectContext) {
     let src = match ctx.source_ref {
         Some(r) => r,
         None => SlotRef::active(ctx.acting_player),
     };
+    let owner = src.player as usize;
     // Split borrow: read total first, then mutate.
-    let total: u8 = match ctx.source_ref {
-        Some(r) => crate::state::get_slot(state, r)
-            .map(|s| s.energy.iter().sum())
-            .unwrap_or(0),
-        None => state.players[ctx.acting_player].active.as_ref()
-            .map(|s| s.energy.iter().sum())
-            .unwrap_or(0),
-    };
+    let total: u8 = crate::state::get_slot(state, src)
+        .map(|s| s.energy.iter().sum())
+        .unwrap_or(0);
     if total == 0 { return; }
     let pick = state.rng.gen_range(0..total) as usize;
     if let Some(slot) = get_slot_mut(state, src) {
@@ -410,6 +407,7 @@ pub fn discard_random_energy_self(state: &mut GameState, ctx: &EffectContext) {
             acc += slot.energy[i] as usize;
             if acc > pick {
                 slot.energy[i] -= 1;
+                state.players[owner].energy_discard[i] += 1;
                 return;
             }
         }
@@ -422,9 +420,11 @@ pub fn discard_energy_self(state: &mut GameState, ctx: &EffectContext, element: 
         Some(r) => r,
         None => SlotRef::active(ctx.acting_player),
     };
+    let owner = src.player as usize;
     if let Some(slot) = get_slot_mut(state, src) {
         if slot.energy[element as usize] > 0 {
             slot.energy[element as usize] -= 1;
+            state.players[owner].energy_discard[element as usize] += 1;
         }
     }
 }
@@ -440,12 +440,14 @@ pub fn discard_n_energy_self(
         Some(r) => r,
         None => SlotRef::active(ctx.acting_player),
     };
+    let owner = src.player as usize;
     for _ in 0..count {
         if let Some(slot) = get_slot_mut(state, src) {
             if slot.energy[element as usize] == 0 {
                 break;
             }
             slot.energy[element as usize] -= 1;
+            state.players[owner].energy_discard[element as usize] += 1;
         }
     }
 }
@@ -456,8 +458,13 @@ pub fn discard_all_energy_self(state: &mut GameState, ctx: &EffectContext) {
         Some(r) => r,
         None => SlotRef::active(ctx.acting_player),
     };
+    let owner = src.player as usize;
     if let Some(slot) = get_slot_mut(state, src) {
+        let dropped = slot.energy;
         slot.energy = [0; 8];
+        for i in 0..8 {
+            state.players[owner].energy_discard[i] += dropped[i];
+        }
     }
 }
 
@@ -471,8 +478,11 @@ pub fn discard_all_typed_energy_self(
         Some(r) => r,
         None => SlotRef::active(ctx.acting_player),
     };
+    let owner = src.player as usize;
     if let Some(slot) = get_slot_mut(state, src) {
+        let n = slot.energy[element as usize];
         slot.energy[element as usize] = 0;
+        state.players[owner].energy_discard[element as usize] += n;
     }
 }
 
@@ -481,6 +491,8 @@ pub fn discard_all_typed_energy_self(
 // ------------------------------------------------------------------ //
 
 /// Discard 1 random energy from the opponent's Active Pokémon.
+/// Discarded energy goes to the OPPONENT's energy_discard pile (it was their
+/// energy on their Pokémon).
 pub fn discard_random_energy_opponent(state: &mut GameState, ctx: &EffectContext) {
     let opp = 1 - ctx.acting_player;
     let total: u8 = state.players[opp]
@@ -493,12 +505,14 @@ pub fn discard_random_energy_opponent(state: &mut GameState, ctx: &EffectContext
     }
     // We need to split the borrow: pick first, then mutate.
     let pick = state.rng.gen_range(0..total) as usize;
-    if let Some(slot) = state.players[opp].active.as_mut() {
+    let player = &mut state.players[opp];
+    if let Some(slot) = player.active.as_mut() {
         let mut acc = 0usize;
         for i in 0..8 {
             acc += slot.energy[i] as usize;
             if acc > pick {
                 slot.energy[i] -= 1;
+                player.energy_discard[i] += 1;
                 break;
             }
         }
@@ -541,7 +555,9 @@ pub fn coin_flip_until_tails_discard_random_energy_opponent(state: &mut GameStat
 }
 
 /// Discard 1 random energy from each Active Pokémon (both players).
+/// Discarded energies go to each owner's energy_discard pile.
 pub fn discard_random_energy_both_active(state: &mut GameState, ctx: &EffectContext) {
+    let _ = ctx;
     for pi in 0..2usize {
         let total: u8 = state.players[pi]
             .active
@@ -552,12 +568,14 @@ pub fn discard_random_energy_both_active(state: &mut GameState, ctx: &EffectCont
             continue;
         }
         let pick = state.rng.gen_range(0..total) as usize;
-        if let Some(slot) = state.players[pi].active.as_mut() {
+        let player = &mut state.players[pi];
+        if let Some(slot) = player.active.as_mut() {
             let mut acc = 0usize;
             for i in 0..8 {
                 acc += slot.energy[i] as usize;
                 if acc > pick {
                     slot.energy[i] -= 1;
+                    player.energy_discard[i] += 1;
                     break;
                 }
             }

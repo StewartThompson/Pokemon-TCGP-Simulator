@@ -370,6 +370,10 @@ pub fn apply_effect(
             let _ = (threshold, bonus, energy_type);
         }
         EffectKind::BonusIfNamedInPlay { bonus, names } => { let _ = (bonus, names); }
+        EffectKind::BonusIfSelfHpAtOrBelow { threshold, bonus } => {
+            // Damage modifier — handled in compute_damage_modifier; no-op here.
+            let _ = (threshold, bonus);
+        }
         EffectKind::HalveOpponentHp => {
             let opp = 1 - ctx.acting_player;
             if let Some(slot) = state.players[opp].active.as_mut() {
@@ -598,6 +602,30 @@ pub fn apply_effect(
         EffectKind::BeastWallProtection => misc_handlers::beast_wall_protection(state, ctx),
         EffectKind::RareCandyEvolve => misc_handlers::rare_candy_evolve(state, db, ctx),
         EffectKind::HpBonus { amount } => misc_handlers::hp_bonus(state, *amount, ctx),
+        EffectKind::EndOfTurnIfActiveDraw { count } => {
+            // Auto-triggered at end of turn (see engine::turn::trigger_end_of_turn_abilities).
+            // Direct apply: draw `count` cards for the acting player.
+            draw_handlers::draw_cards(state, *count, ctx);
+        }
+        EffectKind::OnEvolveAttachEnergyActive { energy_type, required_active_type } => {
+            // Auto-triggered after evolution (see engine::evolve::trigger_on_evolve_abilities).
+            // Direct apply: attach 1 energy of `energy_type` from the Energy Zone to
+            // the acting player's active Pokémon, gated on element match.
+            misc_handlers::attach_energy_to_active_typed(
+                state, db, ctx, energy_type, required_active_type,
+            );
+        }
+        EffectKind::AttachDiscardedEnergyActive { energy_type, required_active_type } => {
+            // Trainer Item (Flame Patch B1-217): consumes 1 energy of
+            // `energy_type` from the acting player's energy_discard pile and
+            // attaches it to the active Pokémon, gated on the active's element.
+            misc_handlers::attach_discarded_energy_to_active(
+                state, db, ctx, energy_type, required_active_type,
+            );
+        }
+        EffectKind::MaySwapPokemon { count } => {
+            misc_handlers::may_swap_pokemon(state, db, ctx, *count);
+        }
 
         // --- Passive ability effects (structural; no runtime state mutation needed) ---
         EffectKind::PassiveDamageReduction { amount: _ } => {}
@@ -782,6 +810,14 @@ pub fn compute_damage_modifier(
                     .unwrap_or(0);
                 if count >= *threshold {
                     bonus += *b;
+                }
+            }
+            EffectKind::BonusIfSelfHpAtOrBelow { threshold, bonus: b } => {
+                // Mega Charizard X ex Raging Blaze: +bonus when current HP ≤ threshold.
+                if let Some(ref slot) = state.players[ctx.acting_player].active {
+                    if slot.current_hp <= *threshold {
+                        bonus += *b;
+                    }
                 }
             }
 

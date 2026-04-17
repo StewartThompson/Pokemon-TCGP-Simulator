@@ -6,6 +6,9 @@ use rand::seq::SliceRandom;
 use crate::card::CardDb;
 use crate::state::{GameState, PokemonSlot};
 use crate::types::GamePhase;
+use crate::effects::{EffectKind, EffectContext};
+use crate::effects::dispatch::apply_effects;
+use crate::actions::SlotRef;
 use super::checkup::resolve_between_turns;
 use super::ko::check_and_handle_kos;
 
@@ -135,7 +138,52 @@ pub fn end_turn(state: &mut GameState) {
     state.players[current].cant_play_items_this_turn = false;
     state.players[current].cant_attach_energy_this_turn = false;
 
+    // Consume the "attack ends turn after promotion" flag — once we've actually
+    // advanced past this turn, the trigger is satisfied.
+    state.attack_pending_advance = false;
+
     state.current_player = 1 - state.current_player;
+}
+
+/// Auto-fire end-of-turn ability effects on the current player's active Pokémon.
+///
+/// Currently triggers `EffectKind::EndOfTurnIfActiveDraw` (Suicune ex /
+/// Entei ex Legendary Pulse: "At the end of your turn, if this Pokémon
+/// is in the Active Spot, draw a card.").
+///
+/// Called from `advance_turn` between `resolve_between_turns` and `end_turn`,
+/// while `state.current_player` still refers to the player whose turn just
+/// ended.  Skipped if the active Pokémon was just KO'd (no slot present).
+pub fn trigger_end_of_turn_abilities(state: &mut GameState, db: &CardDb) {
+    let p = state.current_player;
+    let active = match state.players[p].active.as_ref() {
+        Some(s) => s,
+        None => return,
+    };
+    let card = match db.try_get_by_idx(active.card_idx) {
+        Some(c) => c,
+        None => return,
+    };
+    let ability = match card.ability.as_ref() {
+        Some(a) => a,
+        None => return,
+    };
+    // Pull out only the end-of-turn-trigger effects to fire.
+    let effects: Vec<EffectKind> = ability.effects.iter()
+        .filter(|e| matches!(e, EffectKind::EndOfTurnIfActiveDraw { .. }))
+        .cloned()
+        .collect();
+    if effects.is_empty() {
+        return;
+    }
+    let ctx = EffectContext {
+        acting_player: p,
+        source_ref: Some(SlotRef::active(p)),
+        target_ref: None,
+        extra_target_ref: None,
+        extra: Default::default(),
+    };
+    apply_effects(state, db, &effects, &ctx);
 }
 
 /// Full turn transition: checkup status effects → KO check → end_turn → start_turn.
@@ -153,6 +201,10 @@ pub fn advance_turn(state: &mut GameState, db: &CardDb) {
     if state.phase == GamePhase::AwaitingBenchPromotion {
         return;
     }
+
+    // End-of-turn ability triggers (e.g. Legendary Pulse) — fire before
+    // end_turn() switches current_player.
+    trigger_end_of_turn_abilities(state, db);
 
     end_turn(state);
 

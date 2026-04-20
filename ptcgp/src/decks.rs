@@ -123,17 +123,18 @@ pub const CELEBI_EX_ENERGY: &[Element] = &[Element::Grass];
 
 pub const MEW_EX_DECK: &[&str] = &[
     "a1a-077", "a1a-077", // Mew ex x2        (Psyshot 20; Genome Hacking copies opponent)
-    "a1-130",  "a1-130",  // Ralts x2         (Gardevoir base)
-    "a1-131",  "a1-131",  // Kirlia x2        (Gardevoir mid-stage)
-    "a1-132",  "a1-132",  // Gardevoir x2     (Psy Shadow: attach Psychic energy each turn)
-    "a3-144",  "a3-144",  // Rare Candy x2    (Ralts → Gardevoir, skip Kirlia)
-    "a1-225",  "a1-225",  // Sabrina x2
-    "a1-223",  "a1-223",  // Giovanni x2
+    "a2-119",  "a2-119",  // Dialga ex x2         
+    "a1a-066",  "a1a-066",// Budding Expeditionair x2        
+    "a2-147",  "a2-147",  // Giant Cape x2     
+    "a2-150",             // Cyrus x1
+    "a1-225",             // Sabrina
+    "a2-148",  "a2-148",  // Rocky Helm x2
+    "a2b-071",  "a2b-071",// Red x2
     "pa-007",  "pa-007",  // Professor's Research x2
     "pa-005",  "pa-005",  // Poké Ball x2
     "pa-001",  "pa-001",  // Potion x2
 ];
-pub const MEW_EX_ENERGY: &[Element] = &[Element::Psychic];
+pub const MEW_EX_ENERGY: &[Element] = &[Element::Metal];
 
 // ------------------------------------------------------------------ //
 // Dragonite deck — Dragon spread sweeper

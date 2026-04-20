@@ -415,7 +415,7 @@ fn main() -> candle_core::Result<()> {
             &infer_device,
         );
         println!(
-            "  eval:      vs_{} = {:.1}%  ({} games, {:.1}s)",
+            "  eval:      vs_{} = {:.1}% score  ({} games, {:.1}s)",
             opp_label,
             wr * 100.0,
             args.eval_games,
@@ -429,7 +429,7 @@ fn main() -> candle_core::Result<()> {
             games_played: games_played_base + (gen_offset as u64 + 1) * args.games_per_gen as u64,
             wall_time_s: t0.elapsed().as_secs_f64(),
             notes: format!(
-                "loss_win={:.4}, vs_{}={:.1}%",
+                "loss_win={:.4}, vs_{}_score={:.1}%",
                 stats.loss_win,
                 opp_label,
                 wr * 100.0
@@ -509,6 +509,7 @@ fn collect_selfplay_samples(
                 leaf_value_source: leaf_value,
                 rollout_depth_cap: depth_cap,
                 temperature: 1.0, // sample visits (exploration) during self-play
+                use_dirichlet: true, // Dirichlet root noise for exploration diversity
                 ..Default::default()
             };
             let focal = MctsAgent::new(config.clone(), db.clone())
@@ -577,10 +578,15 @@ fn collect_selfplay_samples(
 /// Resolve an `--eval-opponent` spec to a label string and a concrete agent.
 ///
 /// Specs:
-///   `first`      → oldest checkpoint in the dir
-///   `heuristic`  → HeuristicAgent
-///   `gen:<N>`    → MCTS bot from gen_<N>
-///   `prev:<K>`   → MCTS bot from (current_gen - K)
+///   `first`              → oldest checkpoint in the dir (trained net)
+///   `heuristic`          → simple rule-based HeuristicAgent (weak baseline)
+///   `mcts-raw`           → pure MCTS with heuristic rollouts, no net (honest baseline)
+///   `mcts-raw:<sims>`    → pure MCTS with N sims (e.g. `mcts-raw:240`)
+///   `gen:<N>`            → MCTS bot from gen_<N>
+///   `prev:<K>`           → MCTS bot from (current_gen - K)
+///
+/// `mcts-raw` is the best eval opponent: it's a strong fixed baseline that never
+/// gets easier. Any increase in win rate vs it means the net genuinely improved.
 ///
 /// Falls back to HeuristicAgent with a warning if the checkpoint can't be loaded.
 fn resolve_eval_opponent(
@@ -595,6 +601,24 @@ fn resolve_eval_opponent(
     heuristic_rollouts: bool,
     heuristic_rollout_depth: u32,
 ) -> (String, Arc<dyn Agent>) {
+    // Handle mcts-raw[:sims] — pure MCTS with heuristic rollouts, no learned net.
+    // This is the best eval baseline: fixed strength, honest benchmark.
+    if spec == "mcts-raw" || spec.starts_with("mcts-raw:") {
+        let sims = spec
+            .strip_prefix("mcts-raw:")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(mcts_sims);
+        let config = MctsConfig {
+            total_sims: sims,
+            leaf_value_source: LeafValue::HeuristicRollout,
+            rollout_depth_cap: heuristic_rollout_depth,
+            temperature: 0.0,
+            ..Default::default()
+        };
+        let label = format!("mcts-raw:{}", sims);
+        return (label, Arc::new(MctsAgent::new(config, db.clone())) as Arc<dyn Agent>);
+    }
+
     // Resolve spec → Option<gen_number>.
     let target_gen: Option<u32> = if spec == "heuristic" {
         None // handled separately below
@@ -694,6 +718,7 @@ fn eval_vs_agent(
 
     let mut total_games: usize = 0;
     let mut mcts_wins: usize = 0;
+    let mut mcts_draws: usize = 0;
     let games_per_deck = (games / deck_pool.len().max(1)).max(2);
     for (di, (deck, energy)) in deck_pool.iter().enumerate() {
         let d_seed = seed.wrapping_add(di as u64 * 99_991);
@@ -721,9 +746,14 @@ fn eval_vs_agent(
         );
         total_games += r1.total_games + r2.total_games;
         mcts_wins += r1.player0_wins + r2.player1_wins;
+        mcts_draws += r1.draws + r2.draws;
     }
+    // Use score = (wins + 0.5*draws) / total instead of raw wins.
+    // Raw win rate is misleading on slow decks where draws are frequent
+    // (venusaur/mewtwo can hit 65-70% draws vs MCTS, so raw win rate looks
+    // terrible even when the agent is actually stronger than the opponent).
     let wr = if total_games > 0 {
-        mcts_wins as f64 / total_games as f64
+        (mcts_wins as f64 + 0.5 * mcts_draws as f64) / total_games as f64
     } else {
         0.0
     };

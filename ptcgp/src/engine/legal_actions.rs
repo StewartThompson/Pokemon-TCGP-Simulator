@@ -144,6 +144,32 @@ fn collect_supporter_actions(
 
     for effect in &card.trainer_effects {
         match effect {
+            // --- Return named active to hand (Budding Expeditioner) ---
+            // Requires: active matches a name in `names`, AND bench has at
+            // least one Pokémon to promote into the vacated active slot.
+            // Without the bench check we'd leave the player with no active
+            // and no way to promote — effectively a self-KO / engine crash.
+            EffectKind::ReturnActiveToHandNamed { name } => {
+                // Must have a bench Pokémon to promote.
+                let has_bench = state.players[cp].bench.iter().any(|s| s.is_some());
+                if !has_bench { return vec![]; }
+                // Active must match the named Pokémon.
+                let active_matches = state.players[cp].active.as_ref().map(|s| {
+                    db.try_get_by_idx(s.card_idx)
+                        .map(|c| c.name.eq_ignore_ascii_case(name))
+                        .unwrap_or(false)
+                }).unwrap_or(false);
+                if !active_matches { return vec![]; }
+                return vec![Action::play_item(hand_index, None)];
+            }
+            // --- Return active to hand (colourless, no name filter) ---
+            EffectKind::ReturnColorlessToHand => {
+                let has_bench = state.players[cp].bench.iter().any(|s| s.is_some());
+                if !has_bench { return vec![]; }
+                // (Name filter is empty — any Colorless active works.)
+                if state.players[cp].active.is_none() { return vec![]; }
+                return vec![Action::play_item(hand_index, None)];
+            }
             // --- Move energy from bench to active (Dawn) ---
             EffectKind::MoveBenchEnergyToActive => {
                 // Only playable if active exists and at least one benched Pokemon
@@ -646,8 +672,27 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                         // own slots. Currently: Manaphy `attach_water_two_bench`.
                         let needs_two_bench = attack.effects.iter()
                             .any(|e| matches!(e, EffectKind::AttachWaterTwoBench));
+                        // Dialga ex Metallic Turbo: attach N energy to ONE
+                        // chosen bench Pokémon.  Emit one attack Action per
+                        // bench slot so the player (or the heuristic) picks.
+                        let needs_one_bench = attack.effects.iter()
+                            .any(|e| matches!(e, EffectKind::AttachNEnergyZoneBench { .. }));
 
-                        if needs_two_bench {
+                        if needs_one_bench {
+                            let bench_indices: Vec<usize> = (0..3)
+                                .filter(|&j| state.players[cp].bench[j].is_some())
+                                .collect();
+                            if bench_indices.is_empty() {
+                                // No bench — attack still legal but the attach
+                                // fizzles.  Still emit the attack.
+                                actions.push(Action::attack(i, None));
+                            } else {
+                                for &j in &bench_indices {
+                                    let target = SlotRef::bench(cp, j);
+                                    actions.push(Action::attack(i, Some(target)));
+                                }
+                            }
+                        } else if needs_two_bench {
                             // Emit one action per unordered pair of own bench slots.
                             let bench_indices: Vec<usize> = (0..3)
                                 .filter(|&j| state.players[cp].bench[j].is_some())

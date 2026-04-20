@@ -70,7 +70,9 @@ pub enum LeafValue {
 pub struct MctsConfig {
     /// Total number of MCTS simulations per `select_action` call.
     pub total_sims: usize,
-    /// UCB1 exploration constant. ~1.4 is a reasonable default.
+    /// UCB1 exploration constant. Used in the bonus term
+    /// `c * sqrt(ln(N) / n)` for visited edges.
+    /// ~1.4 is the theoretical default; increase for more exploration.
     pub c_puct: f64,
     /// Action-selection temperature. 0 = argmax over visit counts (strongest
     /// at play time). >0 = sample proportional to visits^(1/T) (used during
@@ -85,6 +87,16 @@ pub struct MctsConfig {
     pub delegate_trivial: bool,
     /// If true, defer to `HeuristicAgent` during Setup + Promotion phases.
     pub delegate_setup: bool,
+    /// Inject Dirichlet noise into root edge priors during self-play.
+    /// Disabled at eval time so the agent plays deterministically.
+    pub use_dirichlet: bool,
+    /// Concentration parameter for the Dirichlet distribution.
+    /// AlphaZero uses α ≈ 0.3 for chess/Go; slightly higher values (0.5)
+    /// give more exploration in a game with many short trees.
+    pub dirichlet_alpha: f32,
+    /// Fraction of the root prior that comes from Dirichlet noise.
+    /// (1 - frac) comes from the uniform prior. AlphaZero default: 0.25.
+    pub dirichlet_frac: f32,
 }
 
 impl Default for MctsConfig {
@@ -97,6 +109,9 @@ impl Default for MctsConfig {
             rollout_depth_cap: 200,
             delegate_trivial: true,
             delegate_setup: true,
+            use_dirichlet: false,
+            dirichlet_alpha: 0.3,
+            dirichlet_frac: 0.25,
         }
     }
 }
@@ -201,6 +216,25 @@ impl Agent for MctsAgent {
         let root = tree.new_node(&search_state, db);
         tree.root = root;
 
+        // Inject Dirichlet noise into root edge priors (training only).
+        // This ensures different games explore different root actions first,
+        // preventing the policy from collapsing to deterministic play.
+        if self.config.use_dirichlet {
+            let n = tree.nodes[root].children.len();
+            if n > 1 {
+                let noise = sample_dirichlet(
+                    self.config.dirichlet_alpha,
+                    n,
+                    &mut SmallRng::seed_from_u64(per_call_seed.wrapping_add(0xD1D1_D1D1)),
+                );
+                let frac = self.config.dirichlet_frac;
+                let uniform = 1.0 / n as f32;
+                for (edge, &eta) in tree.nodes[root].children.iter_mut().zip(noise.iter()) {
+                    edge.prior = (1.0 - frac) * uniform + frac * eta;
+                }
+            }
+        }
+
         for i in 0..self.config.total_sims {
             let mut sim_state = search_state.clone();
             // Each sim gets a fresh RNG so coin flips / energy gen aren't lock-stepped.
@@ -221,6 +255,10 @@ struct Edge {
     child: Option<usize>,
     visits: u32,
     value_sum: f64, // from root player's perspective
+    /// Prior probability for this edge (used in P-UCB exploration bonus).
+    /// Initialised to uniform (1 / n_children). At the root during training,
+    /// this is mixed with Dirichlet noise before any simulations run.
+    prior: f32,
 }
 
 struct Node {
@@ -278,6 +316,8 @@ impl<'a> Tree<'a> {
         } else {
             0.0
         };
+        let n = legal.len();
+        let uniform_prior = if n > 0 { 1.0 / n as f32 } else { 1.0 };
         let children: Vec<Edge> = legal
             .into_iter()
             .map(|a| Edge {
@@ -285,6 +325,7 @@ impl<'a> Tree<'a> {
                 child: None,
                 visits: 0,
                 value_sum: 0.0,
+                prior: uniform_prior,
             })
             .collect();
         self.nodes.push(Node {
@@ -379,21 +420,32 @@ impl<'a> Tree<'a> {
         let parent_visits = node.visits.max(1) as f64;
         let log_parent = parent_visits.ln().max(0.0);
         let is_root_player = node.player_to_move as usize == self.root_player;
+        let is_root = node_idx == self.root;
 
         let mut best_idx = 0usize;
         let mut best_score = f64::NEG_INFINITY;
 
         for (i, edge) in node.children.iter().enumerate() {
             let score = if edge.visits == 0 {
-                // Unvisited → explore first. Use INFINITY with a tiny
-                // tiebreak on action index to keep the first encountered
-                // unvisited edge selected deterministically per search.
-                f64::INFINITY - (i as f64) * 1e-12
+                // Unvisited → must be explored before any visited edge.
+                // At the root, use the Dirichlet-noised prior to randomise
+                // which unvisited edge is tried first: higher prior ⟹
+                // explored earlier. This gives each game a different root
+                // exploration order without changing the UCB formula for
+                // visited edges, preserving the proven UCB1 behaviour.
+                // At non-root nodes we keep the original deterministic
+                // index-based tiebreak (prior is uniform there, noise-free).
+                if is_root {
+                    f64::INFINITY + edge.prior as f64 * 1e-3
+                } else {
+                    f64::INFINITY - (i as f64) * 1e-12
+                }
             } else {
                 let mean = edge.value_sum / edge.visits as f64;
-                // Flip sign at opponent nodes so UCB always maximizes
-                // "value for the player currently choosing".
+                // Flip sign at opponent nodes so UCB always maximises for
+                // the player currently choosing.
                 let q = if is_root_player { mean } else { -mean };
+                // Standard UCB1 exploration term.
                 let u = self.config.c_puct * (log_parent / edge.visits as f64).sqrt();
                 q + u
             };
@@ -495,10 +547,19 @@ impl<'a> Tree<'a> {
         if state.winner.is_some() || state.phase == GamePhase::GameOver {
             value_for_root(state, self.root_player)
         } else {
+            // Rollout hit the depth cap without a decisive result.
+            // Prize-diff proxy: (my_prizes - opp_prizes) / 3.0, range [-1, +1].
+            // We subtract a stall penalty (-0.25) to discourage the agent
+            // from preferring stalling strategies over decisive attacks.
+            // Matched to the draw value (-0.5): a rollout that hit the cap
+            // with 0 prizes taken is slightly BETTER than a draw (the game
+            // might still be won), but clearly worse than a decisive outcome.
             let p0 = state.players[0].points as f64;
             let p1 = state.players[1].points as f64;
             let diff = (p0 - p1) / 3.0;
-            if self.root_player == 0 { diff } else { -diff }
+            let stall_penalty = -0.25;
+            let raw = if self.root_player == 0 { diff } else { -diff };
+            (raw + stall_penalty).clamp(-1.0, 1.0)
         }
     }
 
@@ -571,6 +632,71 @@ impl<'a> Tree<'a> {
 // Helpers
 // ------------------------------------------------------------------ //
 
+// ------------------------------------------------------------------ //
+// Dirichlet noise
+// ------------------------------------------------------------------ //
+
+/// Sample from a symmetric Dirichlet(α, k) distribution.
+/// Returns a Vec of `k` values that sum to 1.0.
+///
+/// Uses the Gamma-distribution trick: sample k independent Gamma(α,1) r.v.s
+/// and normalise. For α < 1 (our default is 0.3) we use the Ahrens-Dieter /
+/// Marsaglia-Tsang "squeeze" method which is numerically stable for small α.
+fn sample_dirichlet(alpha: f32, k: usize, rng: &mut SmallRng) -> Vec<f32> {
+    let mut samples: Vec<f32> = (0..k).map(|_| sample_gamma(alpha, rng)).collect();
+    let sum: f32 = samples.iter().sum();
+    if sum > 0.0 {
+        for s in &mut samples {
+            *s /= sum;
+        }
+    } else {
+        // Degenerate fallback — uniform distribution.
+        for s in &mut samples {
+            *s = 1.0 / k as f32;
+        }
+    }
+    samples
+}
+
+/// Sample one value from Gamma(shape, scale=1) distribution.
+///
+/// For shape >= 1: Marsaglia-Tsang (2000), "A Simple Method for Generating
+///   Gamma Variables", ACM TOMS 26(3). Very fast, requires ~2 Gaussian draws
+///   on average.
+///
+/// For shape < 1 (our case, α=0.3): apply the boost identity
+///   Gamma(α) = Gamma(α+1) · U^(1/α)  where U ~ Uniform(0,1)
+///   This converts an under-unit problem to a ≥1 problem.
+fn sample_gamma(shape: f32, rng: &mut SmallRng) -> f32 {
+    if shape < 1.0 {
+        // Boost: Gamma(α) = Gamma(α+1) * U^(1/α)
+        let u: f32 = rng.gen();
+        sample_gamma(shape + 1.0, rng) * u.powf(1.0 / shape)
+    } else {
+        // Marsaglia-Tsang for shape >= 1.
+        let d = (shape - 1.0 / 3.0) as f64;
+        let c = (1.0 / (9.0 * d).sqrt()) as f64;
+        loop {
+            // Draw a standard normal via Box-Muller.
+            let u1: f64 = rng.gen::<f64>().max(1e-12);
+            let u2: f64 = rng.gen::<f64>().max(1e-12);
+            let x = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+            let v = (1.0 + c * x).powi(3);
+            if v <= 0.0 {
+                continue;
+            }
+            let u: f64 = rng.gen();
+            // Marsaglia squeeze test — accepts ~98% of proposals.
+            if u < 1.0 - 0.0331 * x.powi(4) {
+                return (d * v) as f32;
+            }
+            if u.ln() < 0.5 * x * x + d * (1.0 - v + v.ln()) {
+                return (d * v) as f32;
+            }
+        }
+    }
+}
+
 /// Legal actions for whatever phase the state is in.
 fn legal_for_phase(state: &GameState, db: &CardDb, player_idx: usize) -> Vec<Action> {
     match state.phase {
@@ -630,7 +756,14 @@ fn value_for_root(state: &GameState, root_player: usize) -> f64 {
     match state.winner {
         Some(w) if w == root_player as i8 => 1.0,
         Some(w) if w >= 0 => -1.0, // opponent won
-        _ => 0.0,                  // None (ongoing) or Some(-1) (draw)
+        // Draw (turn limit hit, Some(-1)) or ongoing: moderately negative.
+        // A draw means you never won — equivalent to a half-loss.
+        // With 0.0 (neutral), MCTS treats stalling (expected draw) as
+        // equivalent to an evenly-contested attack (EV ≈ 0), so both
+        // MCTS agents stall into the turn limit (~65-74% draw rate on
+        // slow decks). Setting -0.5 makes attacking strictly preferred in
+        // any position where the expected win probability exceeds 25%.
+        _ => -0.5,
     }
 }
 

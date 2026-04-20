@@ -205,8 +205,13 @@ pub fn apply_effect(
         EffectKind::AttachEnergyZoneToGrass => {
             energy_handlers::attach_energy_zone_to_grass(state, db, ctx)
         }
-        EffectKind::AttachNEnergyZoneBench { count } => {
-            let element = state.players[ctx.acting_player].energy_available
+        EffectKind::AttachNEnergyZoneBench { count, energy_type } => {
+            // Prefer the attack-specified energy type (e.g. Dialga ex
+            // "Take 2 Metal Energy").  Fall back to this player's primary
+            // deck energy, then energy_available, then Grass.
+            let element = Element::from_str(energy_type)
+                .or_else(|| state.players[ctx.acting_player].energy_types.first().copied())
+                .or(state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
             energy_handlers::attach_n_energy_zone_bench(state, db, ctx, element, *count);
         }

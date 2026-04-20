@@ -8,6 +8,7 @@ pub mod energy_handlers;
 pub mod movement_handlers;
 pub mod damage_mod_handlers;
 pub mod misc_handlers;
+pub mod legality;
 
 // ------------------------------------------------------------------ //
 // Effect context
@@ -127,7 +128,7 @@ pub enum EffectKind {
     AttachEnergyZoneSelfBracket,
     AttachEnergyZoneNamed { name: String },
     AttachEnergyZoneToGrass,
-    AttachNEnergyZoneBench { count: u8 },
+    AttachNEnergyZoneBench { count: u8, energy_type: String },
     AttachWaterTwoBench,
     AttachColorlessEnergyZoneBench,
     AttachEnergyDiscardNamed { name: String },
@@ -530,6 +531,7 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         "attach_energy_zone_to_grass" => EffectKind::AttachEnergyZoneToGrass,
         "attach_n_energy_zone_bench" => EffectKind::AttachNEnergyZoneBench {
             count: get_u8(&params, "count", 1),
+            energy_type: get_str(&params, "energy_type"),
         },
         "attach_water_two_bench" => EffectKind::AttachWaterTwoBench,
         "attach_colorless_energy_zone_bench" => EffectKind::AttachColorlessEnergyZoneBench,

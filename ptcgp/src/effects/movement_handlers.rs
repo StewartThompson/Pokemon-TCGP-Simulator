@@ -249,11 +249,25 @@ pub fn return_active_to_hand_named(state: &mut GameState, ctx: &EffectContext, d
             }
         }
     }
+    // Defense-in-depth: bouncing the active leaves an empty active spot.
+    // If the bench is also empty, the engine would have to either force an
+    // illegal game state or award a loss.  Refuse to act instead — the
+    // legal_actions layer already gates this, so hitting this branch means
+    // something called the handler directly without going through legal_actions.
+    let has_bench = state.players[pi].bench.iter().any(|s| s.is_some());
+    if !has_bench {
+        return;
+    }
     let active = state.players[pi].active.take().unwrap();
     state.players[pi].hand.push(active.card_idx);
     if let Some(tool_idx) = active.tool_idx {
         state.players[pi].discard.push(tool_idx);
     }
+    // Tell the engine we need to promote from bench (mirrors a KO on the
+    // vacated active spot).  Without this the player would keep attacking
+    // from an empty active slot on the next sim step.
+    state.players[pi].needs_promotion = true;
+    state.phase = crate::types::GamePhase::AwaitingBenchPromotion;
 }
 
 /// Coin flip: on heads, put the opponent's Active back into their hand.

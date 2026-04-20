@@ -3815,7 +3815,10 @@
       {
         "name": "Poison Barb",
         "effect": "If the Pokémon this card is attached to is your Active Pokémon and is damaged by an attack from your opponent's Pokémon, the Attacking Pokémon is now Poisoned.",
-        "handler": "passive_retaliate_poison"
+        "handler": "passive_retaliate_poison",
+        "legal": [
+          "tool_target"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -3925,7 +3928,10 @@
       {
         "name": "Guzma",
         "effect": "Discard all Pokémon Tool cards attached to each of your opponent's Pokémon.",
-        "handler": "discard_all_opponent_tools"
+        "handler": "discard_all_opponent_tools",
+        "legal": [
+          "opp_has_tool"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -4013,7 +4019,11 @@
       {
         "name": "Lillie",
         "effect": "Heal 60 damage from 1 of your Stage 2 Pokémon.",
-        "handler": "heal_stage2_target(amount=60)"
+        "handler": "heal_stage2_target(amount=60)",
+        "legal": [
+          "own_in_play_damaged(stage=Stage2)",
+          "heal_own_target(stage=Stage2)"
+        ]
       }
     ],
     "evolvesFrom": null,

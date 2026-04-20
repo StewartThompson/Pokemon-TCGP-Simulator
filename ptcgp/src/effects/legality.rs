@@ -730,6 +730,7 @@ mod tests {
             trainer_effect_text: String::new(),
             trainer_handler: String::new(),
             trainer_effects: vec![],
+            trainer_legal_conditions: vec![],
             ko_points: 1,
         }
     }

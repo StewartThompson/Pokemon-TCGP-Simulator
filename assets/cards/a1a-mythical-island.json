@@ -1814,7 +1814,11 @@
       {
         "name": "Budding Expeditioner",
         "effect": "Put your Mew ex in the Active Spot into your hand.",
-        "handler": "return_active_to_hand_named(names=(mew ex))"
+        "handler": "return_active_to_hand_named(names=(mew ex))",
+        "legal": [
+          "active_is_named(names=Mew ex)",
+          "own_bench_at_least(count=1)"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -1858,7 +1862,10 @@
       {
         "name": "Leaf",
         "effect": "During this turn, the Retreat Cost of your Active Pokémon is 2 less.",
-        "handler": "reduce_retreat_cost(amount=2)"
+        "handler": "reduce_retreat_cost(amount=2)",
+        "legal": [
+          "active_retreat_cost_at_least(amount=1)"
+        ]
       }
     ],
     "evolvesFrom": null,

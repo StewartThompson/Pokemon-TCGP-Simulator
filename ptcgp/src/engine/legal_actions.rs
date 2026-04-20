@@ -369,24 +369,26 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                     continue;
                 }
 
+                // NEW: per-card `legal` predicates take precedence.  When the
+                // JSON declares any preconditions/target enumerators we delegate
+                // to the unified evaluator.  Cards without `legal` keep the
+                // old inline gating below for backward compatibility.
+                if !card.trainer_legal_conditions.is_empty() {
+                    use crate::effects::legality::{enumerate_legal_actions, BaseAction};
+                    actions.extend(enumerate_legal_actions(
+                        &card.trainer_legal_conditions,
+                        state, db, cp,
+                        BaseAction::PlayItem { hand_index: i },
+                    ));
+                    continue;
+                }
+
                 // Heal-target items: generate one action per damaged own Pokemon.
                 let needs_heal_target = card.trainer_effects.iter().any(|e| {
                     matches!(e, EffectKind::HealTarget { .. } | EffectKind::HealAndCureStatus { .. })
                 });
                 let needs_heal_active = !needs_heal_target && card.trainer_effects.iter().any(|e| {
                     matches!(e, EffectKind::HealActive { .. })
-                });
-
-                // Flame Patch (B1-217) — only playable when there's a matching
-                // energy in the discard pile AND the active matches the gate.
-                let attach_discarded = card.trainer_effects.iter().find_map(|e| {
-                    if let EffectKind::AttachDiscardedEnergyActive {
-                        energy_type, required_active_type,
-                    } = e {
-                        Some((energy_type.clone(), required_active_type.clone()))
-                    } else {
-                        None
-                    }
                 });
 
                 if needs_heal_target {
@@ -405,35 +407,10 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                     }
                     // (no fallback action — can't use Potion if no Pokemon has damage)
                 } else if needs_heal_active {
-                    // Only usable if active is damaged.
                     if let Some(ref active) = player.active {
                         if active.current_hp < active.max_hp {
                             actions.push(Action::play_item(i, None));
                         }
-                    }
-                } else if let Some((energy_type, required_active_type)) = attach_discarded {
-                    let el = match Element::from_str(&energy_type) {
-                        Some(e) => e,
-                        None => continue,
-                    };
-                    // Discard pile must have at least 1 of `el`.
-                    if player.energy_discard[el as usize] == 0 {
-                        continue;
-                    }
-                    // Active must match the gate (if non-empty).
-                    let active_ok = if required_active_type.is_empty() {
-                        player.active.is_some()
-                    } else {
-                        let req = match Element::from_str(&required_active_type) {
-                            Some(e) => e,
-                            None => continue,
-                        };
-                        player.active.as_ref()
-                            .and_then(|s| db.try_get_by_idx(s.card_idx).and_then(|c| c.element))
-                            == Some(req)
-                    };
-                    if active_ok {
-                        actions.push(Action::play_item(i, None));
                     }
                 } else {
                     // Generic item with no targeting restriction.
@@ -451,13 +428,33 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                 if opponent_blocks_supporters(state, db) {
                     continue;
                 }
-                // Generate targeted/validated actions for this supporter.
+                // NEW: delegate to the unified `legal` evaluator when present.
+                if !card.trainer_legal_conditions.is_empty() {
+                    use crate::effects::legality::{enumerate_legal_actions, BaseAction};
+                    actions.extend(enumerate_legal_actions(
+                        &card.trainer_legal_conditions,
+                        state, db, cp,
+                        BaseAction::PlayItem { hand_index: i },
+                    ));
+                    continue;
+                }
+                // Fallback: legacy inline supporter gating.
                 let supporter_actions = collect_supporter_actions(state, db, cp, i, card);
                 actions.extend(supporter_actions);
             }
 
             CardKind::Tool => {
-                // Attach to active if it has no tool.
+                // NEW: delegate to the unified `legal` evaluator when present.
+                if !card.trainer_legal_conditions.is_empty() {
+                    use crate::effects::legality::{enumerate_legal_actions, BaseAction};
+                    actions.extend(enumerate_legal_actions(
+                        &card.trainer_legal_conditions,
+                        state, db, cp,
+                        BaseAction::AttachTool { hand_index: i },
+                    ));
+                    continue;
+                }
+                // Fallback: emit one PlayCard per Pokémon without a tool.
                 if let Some(ref active) = player.active {
                     if active.tool_idx.is_none() {
                         actions.push(Action {
@@ -470,7 +467,6 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
                         });
                     }
                 }
-                // Attach to each bench Pokemon that has no tool.
                 for j in 0..3 {
                     if let Some(ref slot) = player.bench[j] {
                         if slot.tool_idx.is_none() {
@@ -840,6 +836,7 @@ mod tests {
                 trainer_effect_text: String::new(),
                 trainer_handler: String::new(),
                 trainer_effects: vec![],
+            trainer_legal_conditions: vec![],
                 ko_points: 1,
             }],
             id_to_idx: {
@@ -927,6 +924,7 @@ mod tests {
                 trainer_effect_text: String::new(),
                 trainer_handler: String::new(),
                 trainer_effects: vec![],
+            trainer_legal_conditions: vec![],
                 ko_points: 1,
             }],
             id_to_idx: {

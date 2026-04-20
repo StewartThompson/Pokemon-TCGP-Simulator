@@ -12,7 +12,9 @@
       {
         "name": "Chilly",
         "damage": "20",
-        "cost": ["Water"],
+        "cost": [
+          "Water"
+        ],
         "handler": ""
       }
     ],
@@ -35,7 +37,10 @@
       {
         "name": "Frost Smash",
         "damage": "50",
-        "cost": ["Water", "Colorless"],
+        "cost": [
+          "Water",
+          "Colorless"
+        ],
         "handler": ""
       }
     ],
@@ -58,7 +63,11 @@
       {
         "name": "Buster Tail",
         "damage": "90",
-        "cost": ["Water", "Water", "Water"],
+        "cost": [
+          "Water",
+          "Water",
+          "Water"
+        ],
         "handler": ""
       }
     ],
@@ -68,7 +77,10 @@
       {
         "name": "Ice Maker",
         "effect": "Once during your turn, you may take a Water Energy from your Energy Zone and attach it to the Water Pokemon in the Active Spot.",
-        "handler": "attach_energy_zone_self(count=1, energy_type=Water)"
+        "handler": "attach_energy_zone_self(count=1, energy_type=Water)",
+        "legal": [
+          "active_is_element(element=Water)"
+        ]
       }
     ],
     "evolvesFrom": "Arctibax",
@@ -87,13 +99,19 @@
       {
         "name": "Icicle",
         "damage": "20",
-        "cost": ["Water"],
+        "cost": [
+          "Water"
+        ],
         "handler": ""
       },
       {
         "name": "Diving Icicles",
         "damage": "130",
-        "cost": ["Water", "Water", "Water"],
+        "cost": [
+          "Water",
+          "Water",
+          "Water"
+        ],
         "effect": "Discard all Water Energy from this Pokemon. This attack does 130 damage to 1 of your opponent's Pokemon.",
         "handler": "discard_all_typed_energy_self(energy_type=Water)"
       }
@@ -117,7 +135,10 @@
       {
         "name": "Crystal Waltz",
         "damage": "0",
-        "cost": ["Water", "Water"],
+        "cost": [
+          "Water",
+          "Water"
+        ],
         "effect": "This attack does 20 damage for each Benched Pokemon (both yours and your opponent's).",
         "handler": "bonus_per_bench(per=20) | bonus_per_opponent_bench(per=20)"
       }
@@ -147,7 +168,9 @@
       {
         "name": "Ram",
         "damage": "30",
-        "cost": ["Colorless"],
+        "cost": [
+          "Colorless"
+        ],
         "handler": ""
       }
     ],
@@ -245,7 +268,10 @@
       {
         "name": "Inflatable Boat",
         "effect": "The Retreat Cost of the Water Pokemon this card is attached to is 1 less.",
-        "handler": "passive_bench_retreat_reduction(amount=1)"
+        "handler": "passive_bench_retreat_reduction(amount=1)",
+        "legal": [
+          "tool_target(element=Water)"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -264,7 +290,10 @@
       {
         "name": "Slash",
         "damage": "40",
-        "cost": ["Fire", "Fire"],
+        "cost": [
+          "Fire",
+          "Fire"
+        ],
         "handler": ""
       }
     ],
@@ -293,7 +322,11 @@
       {
         "name": "Raging Blaze",
         "damage": "100",
-        "cost": ["Fire", "Fire", "Fire"],
+        "cost": [
+          "Fire",
+          "Fire",
+          "Fire"
+        ],
         "effect": "If this Pokemon's remaining HP is 110 or less, this attack does 80 more damage.",
         "handler": "bonus_if_self_hp_at_or_below(threshold=110, bonus=80)"
       }
@@ -317,7 +350,12 @@
       {
         "name": "Crimson Dive",
         "damage": "250",
-        "cost": ["Fire", "Fire", "Fire", "Colorless"],
+        "cost": [
+          "Fire",
+          "Fire",
+          "Fire",
+          "Colorless"
+        ],
         "effect": "This Pokemon also does 50 damage to itself.",
         "handler": "self_damage(amount=50)"
       }
@@ -341,7 +379,10 @@
       {
         "name": "Blazing Beatdown",
         "damage": "60",
-        "cost": ["Fire", "Fire"],
+        "cost": [
+          "Fire",
+          "Fire"
+        ],
         "effect": "If this Pokemon has at least 2 extra Fire Energy attached, this attack does 60 more damage.",
         "handler": "bonus_if_extra_energy(threshold=2, bonus=60, energy_type=Fire)"
       }
@@ -374,7 +415,11 @@
       {
         "name": "Flame Patch",
         "effect": "Attach a Fire Energy from your discard pile to your Active Fire Pokemon.",
-        "handler": "attach_discarded_energy_active(energy_type=Fire, required_active_type=Fire)"
+        "handler": "attach_discarded_energy_active(energy_type=Fire, required_active_type=Fire)",
+        "legal": [
+          "active_is_element(element=Fire)",
+          "own_energy_discard_at_least(count=1, element=Fire)"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -396,7 +441,10 @@
       {
         "name": "May",
         "effect": "Put 2 random Pokemon from your deck into your hand. For each Pokemon you put into your hand in this way, choose a Pokemon to shuffle from your hand into your deck.",
-        "handler": "may_swap_pokemon(count=2)"
+        "handler": "may_swap_pokemon(count=2)",
+        "legal": [
+          "own_deck_has_pokemon"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -415,7 +463,9 @@
       {
         "name": "Beat",
         "damage": "20",
-        "cost": ["Colorless"],
+        "cost": [
+          "Colorless"
+        ],
         "handler": ""
       }
     ],
@@ -438,7 +488,10 @@
       {
         "name": "Waterfall",
         "damage": "60",
-        "cost": ["Water", "Colorless"],
+        "cost": [
+          "Water",
+          "Colorless"
+        ],
         "handler": ""
       }
     ],
@@ -461,7 +514,11 @@
       {
         "name": "Giga Impact",
         "damage": "180",
-        "cost": ["Water", "Lightning", "Colorless"],
+        "cost": [
+          "Water",
+          "Lightning",
+          "Colorless"
+        ],
         "effect": "During your next turn, this Pokemon can't attack.",
         "handler": "self_cant_attack_next_turn"
       }
@@ -488,7 +545,10 @@
       {
         "name": "Starting Plains",
         "effect": "Each Basic Pokemon in play (both yours and your opponent's) gets +20 HP.",
-        "handler": ""
+        "handler": "",
+        "legal": [
+          "own_in_play_basic"
+        ]
       }
     ],
     "evolvesFrom": null,

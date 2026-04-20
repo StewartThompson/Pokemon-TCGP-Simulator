@@ -3,6 +3,7 @@ use std::path::Path;
 use serde::Deserialize;
 use crate::types::{CardKind, CostSymbol, Element, Stage};
 use crate::effects::{EffectKind, parse_handler_string};
+use crate::effects::legality::{LegalCondition, parse_legal_array};
 
 // -------------------------------------------------------------------------- //
 // Card structs
@@ -16,6 +17,10 @@ pub struct Attack {
     pub effect_text: String,
     pub handler: String,
     pub effects: Vec<EffectKind>,
+    /// Pre-parsed `legal` predicates from JSON.  Empty = always legal
+    /// (no preconditions, no target enumeration); evaluated by
+    /// `effects::legality::enumerate_legal_actions` at action-emit time.
+    pub legal_conditions: Vec<LegalCondition>,
 }
 
 #[derive(Clone, Debug)]
@@ -25,6 +30,7 @@ pub struct Ability {
     pub is_passive: bool,
     pub handler: String,
     pub effects: Vec<EffectKind>,
+    pub legal_conditions: Vec<LegalCondition>,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +52,9 @@ pub struct Card {
     pub trainer_effect_text: String,
     pub trainer_handler: String,
     pub trainer_effects: Vec<EffectKind>,
+    /// `legal` predicates for trainer cards (Item / Supporter / Tool).
+    /// Empty = always legal.  See `effects::legality`.
+    pub trainer_legal_conditions: Vec<LegalCondition>,
     pub ko_points: u8,
 }
 
@@ -225,6 +234,10 @@ struct RawAttack {
     cost: Option<Vec<String>>,
     effect: Option<String>,
     handler: Option<String>,
+    /// Optional legality predicates (parallel to handler).  See
+    /// `effects::legality` for the predicate language.
+    #[serde(default)]
+    legal: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -232,6 +245,8 @@ struct RawAbility {
     name: Option<String>,
     effect: Option<String>,
     handler: Option<String>,
+    #[serde(default)]
+    legal: Option<Vec<String>>,
 }
 
 fn parse_damage(v: &serde_json::Value) -> i16 {
@@ -304,7 +319,8 @@ fn parse_card(raw: RawCard) -> Card {
     let is_mega_ex = trimmed_lower.contains("mega") && is_ex;
 
     let (kind, stage, element, weakness, hp, retreat_cost, attacks, ability,
-         trainer_effect_text, trainer_handler, trainer_effects) = if is_pokemon {
+         trainer_effect_text, trainer_handler, trainer_effects,
+         trainer_legal_conditions) = if is_pokemon {
         let kind = CardKind::Pokemon;
         let stage = Stage::from_str(subtype);
         let element = raw.element.as_deref().and_then(Element::from_str);
@@ -342,6 +358,9 @@ fn parse_card(raw: RawCard) -> Card {
             seen.insert(key);
             let handler = ra.handler.unwrap_or_default();
             let effects = parse_handler_string(&handler);
+            let legal_conditions = ra.legal.as_ref()
+                .map(|v| parse_legal_array(v))
+                .unwrap_or_default();
             attacks.push(Attack {
                 name: atk_name,
                 damage,
@@ -349,6 +368,7 @@ fn parse_card(raw: RawCard) -> Card {
                 effect_text: ra.effect.unwrap_or_default(),
                 handler,
                 effects,
+                legal_conditions,
             });
         }
 
@@ -357,14 +377,18 @@ fn parse_card(raw: RawCard) -> Card {
             abs.iter().find(|a| a.name.is_some() && a.effect.is_some()).map(|a| {
                 let handler = a.handler.clone().unwrap_or_default();
                 let effects = parse_handler_string(&handler);
+                let legal_conditions = a.legal.as_ref()
+                    .map(|v| parse_legal_array(v))
+                    .unwrap_or_default();
                 let ab_name = a.name.clone().unwrap_or_default();
                 let effect_text = a.effect.clone().unwrap_or_default();
                 let is_passive = detect_is_passive(&ab_name, &effect_text, &handler);
-                Ability { name: ab_name, effect_text, is_passive, handler, effects }
+                Ability { name: ab_name, effect_text, is_passive, handler, effects, legal_conditions }
             })
         });
 
-        (kind, stage, element, weakness, hp, retreat_cost, attacks, ability, String::new(), String::new(), vec![])
+        (kind, stage, element, weakness, hp, retreat_cost, attacks, ability,
+         String::new(), String::new(), vec![], vec![])
     } else {
         let kind = match subtype.to_lowercase().as_str() {
             "supporter" => CardKind::Supporter,
@@ -380,6 +404,11 @@ fn parse_card(raw: RawCard) -> Card {
             .and_then(|a| a.handler.clone())
             .unwrap_or_default();
         let trainer_effects = parse_handler_string(&trainer_handler);
+        let trainer_legal_conditions = raw.abilities.as_ref()
+            .and_then(|abs| abs.first())
+            .and_then(|a| a.legal.as_ref())
+            .map(|v| parse_legal_array(v))
+            .unwrap_or_default();
 
         // Fossil cards (e.g. Skull Fossil) have passive_ditto_impostor and are played
         // directly to the bench as a Basic Pokémon. Reclassify them so the engine
@@ -391,9 +420,10 @@ fn parse_card(raw: RawCard) -> Card {
         if let Some(hp) = fossil_hp {
             // Treat as a Basic Pokémon with the given HP and cannot retreat (cost=4).
             (CardKind::Pokemon, Some(crate::types::Stage::Basic), None, None,
-             hp, 4u8, vec![], None, String::new(), String::new(), vec![])
+             hp, 4u8, vec![], None, String::new(), String::new(), vec![], vec![])
         } else {
-            (kind, None, None, None, 0, 0, vec![], None, trainer_effect_text, trainer_handler, trainer_effects)
+            (kind, None, None, None, 0, 0, vec![], None,
+             trainer_effect_text, trainer_handler, trainer_effects, trainer_legal_conditions)
         }
     };
 
@@ -417,6 +447,7 @@ fn parse_card(raw: RawCard) -> Card {
         trainer_effect_text,
         trainer_handler,
         trainer_effects,
+        trainer_legal_conditions,
         ko_points,
     }
 }

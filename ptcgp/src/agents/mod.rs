@@ -1285,11 +1285,13 @@ mod tests {
                 effect_text: String::new(),
                 handler: String::new(),
                 effects: vec![],
+                legal_conditions: vec![],
             }],
             ability: None,
             trainer_effect_text: String::new(),
             trainer_handler: String::new(),
             trainer_effects: vec![],
+            trainer_legal_conditions: vec![],
             ko_points: 1,
         };
 
@@ -1311,6 +1313,7 @@ mod tests {
             trainer_effect_text: String::new(),
             trainer_handler: String::new(),
             trainer_effects: vec![],
+            trainer_legal_conditions: vec![],
             ko_points: 1,
         };
 

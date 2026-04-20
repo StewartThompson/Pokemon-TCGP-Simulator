@@ -137,6 +137,11 @@ impl ReplayBuffer {
     /// means the replay buffer was built with a different feature layout
     /// and the samples are no longer meaningful.
     pub fn load(path: &Path, cap: usize) -> std::io::Result<Self> {
+        // Cap of 0 means "weights-only load" — don't read the replay file at all.
+        // Used by league training to load past-gen nets without paying 338MB I/O per gen.
+        if cap == 0 {
+            return Ok(Self::new(0));
+        }
         let f = File::open(path)?;
         let mut r = BufReader::new(f);
 

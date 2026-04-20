@@ -161,13 +161,20 @@ pub fn apply_effect(
                 energy_handlers::attach_energy_zone_self(state, ctx, element, 1);
             }
         }
-        EffectKind::AttachEnergyZoneBench { count } => {
-            let element = state.players[ctx.acting_player].energy_types
-                .first().copied()
-                .or_else(|| state.players[ctx.acting_player].energy_available)
+        EffectKind::AttachEnergyZoneBench { count, energy_type, target_type } => {
+            // Honor explicit energy_type from the handler (Lilligant Leaf
+            // Supply specifies Grass even in mixed-energy decks).  Fall
+            // back to deck primary, then energy_available, then Grass.
+            let element = Element::from_str(energy_type)
+                .or_else(|| state.players[ctx.acting_player].energy_types.first().copied())
+                .or(state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
+            // Bench filter: when target_type is set the attach is restricted
+            // to bench Pokémon of that element (Lilligant → Grass bench
+            // only; fizzles silently if no eligible target).
+            let filter = Element::from_str(target_type);
             for _ in 0..*count {
-                energy_handlers::attach_energy_zone_bench(state, db, ctx, element, None);
+                energy_handlers::attach_energy_zone_bench(state, db, ctx, element, filter);
             }
         }
         EffectKind::AttachEnergyZoneBenchBracket { count } => {
@@ -188,10 +195,14 @@ pub fn apply_effect(
                 energy_handlers::attach_energy_zone_bench(state, db, ctx, element, None);
             }
         }
-        EffectKind::AttachEnergyZoneSelfBracket => {
-            let element = state.players[ctx.acting_player].energy_types
-                .first().copied()
-                .or_else(|| state.players[ctx.acting_player].energy_available)
+        EffectKind::AttachEnergyZoneSelfBracket { energy_type } => {
+            // Honor the explicit energy_type from the handler (Zeraora
+            // Thunderclap Flash specifies Lightning even in mixed-energy
+            // decks like Dragonite [Water, Lightning]).  Fall back to
+            // deck primary, then energy_available, then Grass.
+            let element = Element::from_str(energy_type)
+                .or_else(|| state.players[ctx.acting_player].energy_types.first().copied())
+                .or(state.players[ctx.acting_player].energy_available)
                 .unwrap_or(Element::Grass);
             energy_handlers::attach_energy_zone_self(state, ctx, element, 1);
         }
@@ -607,6 +618,34 @@ pub fn apply_effect(
         EffectKind::BeastWallProtection => misc_handlers::beast_wall_protection(state, ctx),
         EffectKind::RareCandyEvolve => misc_handlers::rare_candy_evolve(state, db, ctx),
         EffectKind::HpBonus { amount } => misc_handlers::hp_bonus(state, *amount, ctx),
+        EffectKind::AllBasicsHpBonus { amount } => {
+            // Starting Plains: every Basic Pokémon currently in play gains
+            // +amount to both max and current HP (one-shot at play time).
+            for pi in 0..2usize {
+                let active_is_basic = state.players[pi].active.as_ref()
+                    .and_then(|s| db.try_get_by_idx(s.card_idx))
+                    .map(|c| c.stage == Some(crate::types::Stage::Basic))
+                    .unwrap_or(false);
+                if active_is_basic {
+                    if let Some(slot) = state.players[pi].active.as_mut() {
+                        slot.max_hp += *amount;
+                        slot.current_hp += *amount;
+                    }
+                }
+                for j in 0..3 {
+                    let bench_is_basic = state.players[pi].bench[j].as_ref()
+                        .and_then(|s| db.try_get_by_idx(s.card_idx))
+                        .map(|c| c.stage == Some(crate::types::Stage::Basic))
+                        .unwrap_or(false);
+                    if bench_is_basic {
+                        if let Some(slot) = state.players[pi].bench[j].as_mut() {
+                            slot.max_hp += *amount;
+                            slot.current_hp += *amount;
+                        }
+                    }
+                }
+            }
+        }
         EffectKind::EndOfTurnIfActiveDraw { count } => {
             // Auto-triggered at end of turn (see engine::turn::trigger_end_of_turn_abilities).
             // Direct apply: draw `count` cards for the acting player.

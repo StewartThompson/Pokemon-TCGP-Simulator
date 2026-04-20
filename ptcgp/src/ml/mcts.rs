@@ -19,6 +19,7 @@
 //!   where full search is pure overhead.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use rand::Rng;
 use rand::SeedableRng;
@@ -144,6 +145,15 @@ pub struct MctsAgent {
     /// When present, this takes priority over `net` for leaf evaluation.
     /// Build via [`ValueNet::to_inference_net`] and share via `Arc`.
     pub inference_net: Option<Arc<InferenceNet>>,
+    /// Stores the f32 bits of the root Q-value from the most recent
+    /// `select_action` call. AtomicU32 (not `Cell<f32>`) keeps `MctsAgent`
+    /// `Sync` — required by `RecordingAgent`'s `&dyn Agent + Send + Sync`.
+    ///
+    /// Reset to `f32::NAN` at the top of each call; written after all sims
+    /// complete. Fast-path calls (setup, trivial 1-action) leave NaN, which
+    /// `last_root_q()` converts to `None` so callers can distinguish "no
+    /// search ran" from a genuine near-zero Q value.
+    last_root_q_bits: AtomicU32,
 }
 
 impl MctsAgent {
@@ -156,6 +166,7 @@ impl MctsAgent {
             net: None,
             embed_cache,
             inference_net: None,
+            last_root_q_bits: AtomicU32::new(f32::NAN.to_bits()),
         }
     }
 
@@ -195,6 +206,10 @@ impl MctsAgent {
 
 impl Agent for MctsAgent {
     fn select_action(&self, state: &GameState, db: &CardDb, player_idx: usize) -> Action {
+        // Reset Q sentinel so fast-path returns are distinguishable from a
+        // genuine Q=0 after a full search. NaN → last_root_q() returns None.
+        self.last_root_q_bits.store(f32::NAN.to_bits(), Ordering::Relaxed);
+
         // Fast path 1: shallow phases → heuristic. Setup and bench-promotion
         // choices are simple and searching them wastes budget.
         if self.config.delegate_setup {
@@ -272,6 +287,12 @@ impl Agent for MctsAgent {
             sim_state.rng = SmallRng::seed_from_u64(per_call_seed.wrapping_add(i as u64));
             tree.simulate(root, &mut sim_state, db);
         }
+
+        // Capture root Q before returning the best action. Stored in an AtomicU32
+        // so RecordingAgent can read it after calling select_action() without any
+        // locking. NaN sentinel (set at top of this call) is overwritten here.
+        let root_q = tree.root_q();
+        self.last_root_q_bits.store(root_q.to_bits(), Ordering::Relaxed);
 
         tree.best_action(root)
     }
@@ -635,6 +656,17 @@ impl<'a> Tree<'a> {
         }
     }
 
+    /// Mean backed-up value at the root after all simulations. Returns a value
+    /// in [-1, +1] from the root player's perspective. Used by
+    /// [`RootQSource`] to supply a lower-variance training target.
+    fn root_q(&self) -> f32 {
+        let root = &self.nodes[self.root];
+        if root.visits == 0 {
+            return 0.0;
+        }
+        (root.value_sum / root.visits as f64).clamp(-1.0, 1.0) as f32
+    }
+
     /// At the root: pick the action with highest visit count (temperature=0)
     /// or sample proportional to `visits^(1/T)` (temperature>0).
     fn best_action(&mut self, root_idx: usize) -> Action {
@@ -672,6 +704,38 @@ impl<'a> Tree<'a> {
             }
         }
         node.children.last().unwrap().action.clone()
+    }
+}
+
+// ------------------------------------------------------------------ //
+// RootQSource — extract MCTS Q for training label blending
+// ------------------------------------------------------------------ //
+
+/// Read the root Q-value from the most recent [`MctsAgent::select_action`] call.
+///
+/// MCTS root Q = `value_sum / visits` after N simulations — the average
+/// backed-up win probability. It has variance ~1/N (vs 1/1 for the game
+/// outcome), so blending it with the game outcome as the win target
+/// substantially reduces label noise without introducing bias.
+///
+/// [`RecordingAgent`](crate::ml::selfplay::RecordingAgent) queries this after
+/// each `select_action` call and stores the result alongside the features so
+/// [`play_training_game`](crate::ml::selfplay::play_training_game) can blend
+/// it into the final `win_target`.
+pub trait RootQSource: Send + Sync {
+    /// The mean backed-up value at the search root from the acting player's
+    /// perspective, in [-1, +1]. Returns `None` when no full MCTS search ran
+    /// for this decision (fast-path moves: setup phase, single legal action).
+    fn last_root_q(&self) -> Option<f32>;
+}
+
+impl RootQSource for MctsAgent {
+    fn last_root_q(&self) -> Option<f32> {
+        let bits = self.last_root_q_bits.load(Ordering::Relaxed);
+        let q = f32::from_bits(bits);
+        // NaN is the sentinel written at the top of select_action for fast
+        // paths that skip the full search.
+        if q.is_nan() { None } else { Some(q) }
     }
 }
 

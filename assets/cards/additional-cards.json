@@ -545,7 +545,7 @@
       {
         "name": "Starting Plains",
         "effect": "Each Basic Pokemon in play (both yours and your opponent's) gets +20 HP.",
-        "handler": "",
+        "handler": "all_basics_hp_bonus(amount=20)",
         "legal": [
           "own_in_play_basic"
         ]

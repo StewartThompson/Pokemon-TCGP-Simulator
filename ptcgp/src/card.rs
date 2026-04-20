@@ -281,6 +281,11 @@ fn detect_is_passive(name: &str, effect_text: &str, handler: &str) -> bool {
         p.starts_with("passive_")
             || p.starts_with("on_evolve_")
             || p.starts_with("end_of_turn_")
+            // Nihilego More Poison: technically a passive aura ("takes +10
+            // damage from being Poisoned") that fires from the checkup
+            // pipeline.  Treat the bare `toxic_poison` handler as passive
+            // so it never surfaces as USE_ABILITY.
+            || p == "toxic_poison"
     }) {
         return true;
     }

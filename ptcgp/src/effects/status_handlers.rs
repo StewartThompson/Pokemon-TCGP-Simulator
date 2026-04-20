@@ -112,12 +112,17 @@ pub fn apply_random_status_subset(
     set_status(state, target, chosen);
 }
 
-/// Toxic poison — applies Poisoned status AND increases the opponent's per-turn
-/// poison damage by 20 (Nihilego "More Poison" ability). Stacks each use.
+/// Toxic poison marker (Nihilego "More Poison").
+///
+/// Nihilego's More Poison is a **passive aura**: while in play it adds +10
+/// damage per Nihilego whenever the opponent's active is Poisoned (the sum
+/// is computed in `engine::checkup::resolve_between_turns`).  The handler
+/// is now flagged passive (see `card::detect_is_passive`) so it never
+/// surfaces as USE_ABILITY.  This function remains for the rare case it's
+/// dispatched directly (e.g. via tests / future on-event triggers) — it
+/// just applies Poisoned to the opponent so the checkup logic engages.
 pub fn toxic_poison(state: &mut GameState, ctx: &EffectContext) {
     apply_poison(state, ctx);
-    let opp = 1 - ctx.acting_player;
-    state.players[opp].extra_poison_damage += 20;
 }
 
 // ------------------------------------------------------------------ //

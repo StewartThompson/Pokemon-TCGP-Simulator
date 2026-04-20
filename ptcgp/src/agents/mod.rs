@@ -567,30 +567,37 @@ fn score_action(state: &GameState, db: &CardDb, player_idx: usize, action: &Acti
                             }
                             return 30.0 + diff * 3.0;
                         }
-                        // Lillie: draw until hand is 8 cards (approx).  Good
-                        // when our hand is low.
+                        // Lillie: heal 60 from a Stage 2 Pokémon. (Earlier
+                        // I scored this as a draw card — wrong.  legal_actions
+                        // emits one play_item per damaged Stage 2 target via
+                        // heal_target_actions; this branch scores the
+                        // chosen target with the survival-aware heal scorer.)
                         if card.name == "Lillie" {
-                            let own_hand = player.hand.len();
-                            if own_hand <= 2 { return 60.0; }
-                            if own_hand <= 4 { return 45.0; }
-                            return 30.0;
+                            let target_slot = action.target.and_then(
+                                |t| crate::state::get_slot(state, t));
+                            if let Some(slot) = target_slot {
+                                return 18.0 + heal_benefit_score(
+                                    state, db, player_idx, slot, 60,
+                                );
+                            }
+                            return 22.0;
                         }
                         // Gladion: search deck for any card.  Always useful
                         // while the deck still has cards.
                         if card.name == "Gladion" {
                             return if !player.deck.is_empty() { 58.0 } else { 10.0 };
                         }
-                        // Pokémon Center Lady: heal 60 + cure status.  Heal
+                        // Pokémon Center Lady: heal 30 + cure status.  Heal
                         // targeting flows through heal_target_actions; this
                         // scorer is reached once a damaged target was chosen.
-                        // Use survival-aware heal scoring.
+                        // (Card heals 30, not 60 — earlier round had this wrong.)
                         if card.name == "Pokémon Center Lady" {
                             let target_slot = action.target.and_then(
                                 |t| crate::state::get_slot(state, t));
                             if let Some(slot) = target_slot {
                                 let status_bonus = if slot.has_any_status() { 10.0 } else { 0.0 };
                                 return 20.0 + heal_benefit_score(
-                                    state, db, player_idx, slot, 60,
+                                    state, db, player_idx, slot, 30,
                                 ) + status_bonus;
                             }
                             return 25.0;
@@ -608,16 +615,15 @@ fn score_action(state: &GameState, db: &CardDb, player_idx: usize, action: &Acti
                             }
                             return 20.0;
                         }
-                        // Leaf (heal 30 HP to a Pokémon) — HealTarget.
+                        // Leaf: -2 retreat cost on the Active Pokémon this turn.
+                        // (NOT a heal — earlier round had this wrong.  legal_actions
+                        // already gates on active retreat cost ≥ 1.)  Higher
+                        // value when we actually want to retreat right now.
                         if card.name == "Leaf" {
-                            let target_slot = action.target.and_then(
-                                |t| crate::state::get_slot(state, t));
-                            if let Some(slot) = target_slot {
-                                return 15.0 + heal_benefit_score(
-                                    state, db, player_idx, slot, 30,
-                                );
+                            if should_retreat_now(state, db, player_idx) {
+                                return 60.0;
                             }
-                            return 20.0;
+                            return 18.0;
                         }
                         // Budding Expeditioner: return Mew ex active → hand.
                         // legal_actions already ensures Mew ex is active +
@@ -653,12 +659,24 @@ fn score_action(state: &GameState, db: &CardDb, player_idx: usize, action: &Acti
                             }
                             return 28.0;
                         }
-                        // Guzma: switch opponent bench to active (peers Cyrus).
+                        // Guzma: discard ALL Pokémon Tool cards attached to
+                        // the opponent's Pokémon.  Score by count of opp
+                        // Pokémon currently carrying a tool — bigger discard,
+                        // bigger play.  (Previous round mis-scored this as a
+                        // bench-switch like Cyrus.)
                         if card.name == "Guzma" {
                             let opp = 1 - player_idx;
-                            let has_bench = state.players[opp].bench.iter()
-                                .any(|s| s.is_some());
-                            return if has_bench { 50.0 } else { 10.0 };
+                            let mut tool_count = 0u8;
+                            if let Some(s) = state.players[opp].active.as_ref() {
+                                if s.tool_idx.is_some() { tool_count += 1; }
+                            }
+                            for j in 0..3 {
+                                if let Some(s) = state.players[opp].bench[j].as_ref() {
+                                    if s.tool_idx.is_some() { tool_count += 1; }
+                                }
+                            }
+                            if tool_count == 0 { return 5.0; }
+                            return 35.0 + (tool_count as f32) * 12.0;
                         }
                         // Lusamine: recycle Ultra Beast supporters.
                         if card.name == "Lusamine" {
@@ -881,7 +899,7 @@ fn score_action(state: &GameState, db: &CardDb, player_idx: usize, action: &Acti
                                 // attacking when it matters (e.g. Mew ex Genome Hacking).
                                 EffectKind::AttachEnergyZoneSelf
                                 | EffectKind::AttachEnergyZoneSelfN { .. }
-                                | EffectKind::AttachEnergyZoneSelfBracket => {
+                                | EffectKind::AttachEnergyZoneSelfBracket { .. } => {
                                     let gain = energy_attach_attack_gain(state, db, player_idx);
                                     if gain > 0 {
                                         // Unlocks a stronger attack this turn: score above

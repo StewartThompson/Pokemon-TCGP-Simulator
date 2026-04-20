@@ -43,7 +43,7 @@ use ptcgp::ml::{
     league::{pick_opponent, Opponent},
     net::make_optimizer,
     play_training_game, train_epoch, InferenceNet, LeafValue, MctsAgent, MctsConfig, ReplayBuffer,
-    ValueNet,
+    RootQSource, ValueNet,
 };
 use ptcgp::agents::Agent as AgentTrait;
 use ptcgp::types::Element;
@@ -139,6 +139,23 @@ struct Args {
     /// so 40 plies gives a clean win/loss most of the time.
     #[arg(long, default_value_t = 40)]
     heuristic_rollout_depth: u32,
+    /// Fraction of the win target that comes from the MCTS root Q-value vs
+    /// the final game outcome.
+    ///
+    /// win_target = (1 - q_blend) * game_outcome  +  q_blend * mcts_root_q
+    ///
+    /// MCTS root Q is the mean backed-up value across all simulations — its
+    /// variance is ~1/N (N = mcts_sims) compared to 1/1 for the game outcome.
+    /// Blending reduces label noise substantially with no extra compute.
+    ///
+    /// 0.0 = pure game outcome (original behaviour)
+    /// 0.5 = equal blend (recommended starting point)
+    /// 1.0 = pure MCTS Q (strong signal but loses game-outcome calibration)
+    ///
+    /// Default 0.5 is a sensible starting point. If training loss starts
+    /// rising or play quality degrades, try 0.3.
+    #[arg(long, default_value_t = 0.5)]
+    mcts_q_blend: f32,
     /// Who to evaluate the current gen against at the end of each generation.
     ///
     /// Accepted values:
@@ -368,6 +385,7 @@ fn main() -> candle_core::Result<()> {
             args.hybrid_rollout_depth,
             args.heuristic_rollouts,
             args.heuristic_rollout_depth,
+            args.mcts_q_blend,
         );
         let sp_elapsed = sp_t.elapsed();
         println!(
@@ -522,6 +540,7 @@ fn collect_selfplay_samples(
     hybrid_rollout_depth: u32,
     heuristic_rollouts: bool,
     heuristic_rollout_depth: u32,
+    mcts_q_blend: f32,
 ) -> Vec<ptcgp::ml::Sample> {
     let past_gens: Vec<u32> = past_nets.keys().copied().collect();
 
@@ -630,6 +649,11 @@ fn collect_selfplay_samples(
             let opp_deck_idx = if n > 1 { (i + n / 2) % n } else { 0 };
             let (opp_deck, opp_energy) = &deck_pool[opp_deck_idx];
 
+            // Pass focal as its own Q source so MCTS root Q values are
+            // captured and blended into the win target. Opponent samples
+            // (recorder1 inside play_training_game) always use plain game
+            // outcome since we don't have a Q source reference for the opp
+            // agent (it's a Box<dyn Agent> which may be HeuristicAgent).
             play_training_game(
                 db.as_ref(),
                 &focal,
@@ -640,6 +664,8 @@ fn collect_selfplay_samples(
                 opp_energy.clone(),
                 base_seed.wrapping_add(i as u64),
                 embed_cache.as_slice(),
+                Some(&focal as &(dyn RootQSource + Send + Sync)),
+                mcts_q_blend,
             )
         })
         .collect()

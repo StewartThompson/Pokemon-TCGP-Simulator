@@ -30,22 +30,26 @@ pub fn resolve_between_turns(state: &mut GameState, db: &CardDb) {
 
     // --- Poisoned: deal damage (base + any extra from More Poison / Nihilego) ---
     if state.players[p].active.as_ref().unwrap().has_status(StatusEffect::Poisoned) {
-        // Check if the opponent's active Pokemon has a ToxicPoison ability (e.g. Nihilego More Poison).
-        let extra_poison: i16 = state.players[opp].active.as_ref()
-            .map(|slot| {
-                db.try_get_by_idx(slot.card_idx)
-                    .and_then(|card| card.ability.as_ref())
-                    .map(|ab| {
-                        if ab.effects.iter().any(|e| matches!(e, EffectKind::ToxicPoison)) {
-                            10i16
-                        } else {
-                            0i16
-                        }
-                    })
-                    .unwrap_or(0)
-            })
-            .unwrap_or(0);
-        let poison_dmg = POISON_DAMAGE + extra_poison;
+        // Count ALL of the opponent's in-play Pokémon (active + bench) that
+        // have the ToxicPoison ability (Nihilego "More Poison").  The card
+        // text says "+10 damage from being Poisoned" — and per user, it
+        // stacks: 2 Nihilegos = +20, 3 = +30, etc.
+        let has_toxic_poison = |slot: &crate::state::PokemonSlot| -> bool {
+            db.try_get_by_idx(slot.card_idx)
+                .and_then(|card| card.ability.as_ref())
+                .map(|ab| ab.effects.iter().any(|e| matches!(e, EffectKind::ToxicPoison)))
+                .unwrap_or(false)
+        };
+        let mut nihilego_count: i16 = 0;
+        if let Some(s) = state.players[opp].active.as_ref() {
+            if has_toxic_poison(s) { nihilego_count += 1; }
+        }
+        for j in 0..3 {
+            if let Some(s) = state.players[opp].bench[j].as_ref() {
+                if has_toxic_poison(s) { nihilego_count += 1; }
+            }
+        }
+        let poison_dmg = POISON_DAMAGE + (nihilego_count * 10);
         state.players[p].active.as_mut().unwrap().current_hp -= poison_dmg;
     }
 

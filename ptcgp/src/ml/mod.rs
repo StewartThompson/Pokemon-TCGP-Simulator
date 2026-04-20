@@ -40,7 +40,7 @@ pub use checkpoint::{
     gen_dir, latest_generation, list_generations, load_generation, save_generation, Meta,
 };
 pub use league::{pick_opponent, Opponent};
-pub use mcts::{LeafValue, MctsAgent, MctsConfig};
+pub use mcts::{LeafValue, MctsAgent, MctsConfig, RootQSource};
 pub use net::{best_device, huber_loss, is_metal, make_optimizer, InferenceNet, ValueNet, ValueOutputs, HIDDEN_DIM};
 pub use nn_greedy::NnGreedyAgent;
 pub use replay::{ReplayBuffer, Sample};

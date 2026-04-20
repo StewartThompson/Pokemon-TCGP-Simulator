@@ -122,10 +122,10 @@ pub enum EffectKind {
     // --- Energy effects ---
     AttachEnergyZoneSelf,
     AttachEnergyZoneSelfN { count: u8 },
-    AttachEnergyZoneBench { count: u8 },
+    AttachEnergyZoneBench { count: u8, energy_type: String, target_type: String },
     AttachEnergyZoneBenchBracket { count: u8 },
     AttachEnergyZoneBenchAnyBracket { count: u8 },
-    AttachEnergyZoneSelfBracket,
+    AttachEnergyZoneSelfBracket { energy_type: String },
     AttachEnergyZoneNamed { name: String },
     AttachEnergyZoneToGrass,
     AttachNEnergyZoneBench { count: u8, energy_type: String },
@@ -521,6 +521,8 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         }
         "attach_energy_zone_bench" => EffectKind::AttachEnergyZoneBench {
             count: get_u8(&params, "count", 1),
+            energy_type: get_str(&params, "energy_type"),
+            target_type: get_str(&params, "target_type"),
         },
         "attach_energy_zone_bench_bracket" => EffectKind::AttachEnergyZoneBenchBracket {
             count: get_u8(&params, "count", 1),
@@ -528,7 +530,9 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         "attach_energy_zone_bench_any_bracket" => EffectKind::AttachEnergyZoneBenchAnyBracket {
             count: get_u8(&params, "count", 1),
         },
-        "attach_energy_zone_self_bracket" => EffectKind::AttachEnergyZoneSelfBracket,
+        "attach_energy_zone_self_bracket" => EffectKind::AttachEnergyZoneSelfBracket {
+            energy_type: get_str(&params, "energy_type"),
+        },
         "attach_energy_zone_named" => EffectKind::AttachEnergyZoneNamed {
             name: get_str(&params, "name"),
         },

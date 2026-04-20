@@ -77,65 +77,71 @@ pub fn encode_with_cache(
     for_player: usize,
     cache: &[[f32; CARD_EMBED_DIM]],
 ) -> Vec<f32> {
-    debug_assert!(for_player < 2);
-    let mut v = Vec::with_capacity(FEATURE_DIM);
+    let mut out = [0.0f32; FEATURE_DIM];
+    encode_into(state, db, for_player, cache, &mut out);
+    out.to_vec()
+}
 
+/// Zero-allocation variant: writes exactly [`FEATURE_DIM`] floats into `out`.
+///
+/// Prefer this in the MCTS hot path — avoids the heap allocation that
+/// `encode_with_cache` pays on every NN leaf evaluation.
+///
+/// Zeroes `out` at the start so that empty slots and absent energy produce
+/// clean zeros even when `out` is a reused thread-local buffer.
+pub fn encode_into(
+    state: &GameState,
+    db: &CardDb,
+    for_player: usize,
+    cache: &[[f32; CARD_EMBED_DIM]],
+    out: &mut [f32; FEATURE_DIM],
+) {
+    // Always zero first: (a) empty slots write nothing, (b) energy one-hot
+    // is all-zero when `energy_available` is None, (c) thread-local reuse
+    // must not bleed old values into a new call.
+    *out = [0.0f32; FEATURE_DIM];
+
+    debug_assert!(for_player < 2);
     let me = for_player;
     let opp = 1 - me;
+    let mut cur = 0usize;
 
-    // --- Slots (8 × SLOT_DIM) ---
-    // Order: my active, my bench[0..3], opp active, opp bench[0..3].
-    encode_slot(&mut v, state.players[me].active.as_ref(), cache);
+    encode_slot_into(out, &mut cur, state.players[me].active.as_ref(), cache);
     for j in 0..3 {
-        encode_slot(&mut v, state.players[me].bench[j].as_ref(), cache);
+        encode_slot_into(out, &mut cur, state.players[me].bench[j].as_ref(), cache);
     }
-    encode_slot(&mut v, state.players[opp].active.as_ref(), cache);
+    encode_slot_into(out, &mut cur, state.players[opp].active.as_ref(), cache);
     for j in 0..3 {
-        encode_slot(&mut v, state.players[opp].bench[j].as_ref(), cache);
+        encode_slot_into(out, &mut cur, state.players[opp].bench[j].as_ref(), cache);
     }
+    encode_global_into(out, &mut cur, state, db, me);
 
-    // --- Global ---
-    encode_global(&mut v, state, db, me);
-
-    debug_assert_eq!(
-        v.len(),
-        FEATURE_DIM,
-        "feature vector length mismatch: got {}, expected {}",
-        v.len(),
-        FEATURE_DIM
-    );
-    v
+    debug_assert_eq!(cur, FEATURE_DIM, "encode_into wrote {}, expected {}", cur, FEATURE_DIM);
 }
 
 // ------------------------------------------------------------------ //
 // Slot encoding
 // ------------------------------------------------------------------ //
 
-/// Append a slot's features. Empty slot → all zeros.
+// ------------------------------------------------------------------ //
+// Cursor-based slot encoding (zero-allocation hot path)
+// ------------------------------------------------------------------ //
+
+/// Cursor-based twin of [`encode_slot`]. Writes exactly [`SLOT_DIM`] floats
+/// starting at `out[*cur]` and advances `*cur` by [`SLOT_DIM`].
 ///
-/// Layout (SLOT_DIM = CARD_EMBED_DIM + 14 = 29 floats):
-/// ```text
-///   [0 .. CARD_EMBED_DIM]   card embedding (or zeros if slot empty)
-///   [+0]    is_present                       (0 or 1)
-///   [+1]    hp_ratio                         (current_hp / max_hp)
-///   [+2 .. +10]   energy_count_per_element   (8 floats, each / 5.0)
-///   [+10]   status_poisoned                  (0/1)
-///   [+11]   status_burned                    (0/1)
-///   [+12]   status_asleep/paralyzed/confused OR'd (0/1)  - single "impaired" flag
-///   [+13]   has_tool                         (0/1)
-/// ```
-/// Turns-in-play / evolved_this_turn / cant_attack_next_turn are omitted
-/// from the slot encoding to keep things tight; they're captured in the
-/// global section only when they meaningfully affect the acting player.
-fn encode_slot(
-    v: &mut Vec<f32>,
+/// Assumes `out` is already zeroed for the empty-slot case (see
+/// [`encode_into`] which zeroes the full buffer before calling this).
+fn encode_slot_into(
+    out: &mut [f32; FEATURE_DIM],
+    cur: &mut usize,
     slot: Option<&PokemonSlot>,
     cache: &[[f32; CARD_EMBED_DIM]],
 ) {
     match slot {
         None => {
-            // Empty slot — all zeros.
-            v.extend(std::iter::repeat(0.0).take(SLOT_DIM));
+            // Buffer is already zeroed; just advance the cursor.
+            *cur += SLOT_DIM;
         }
         Some(s) => {
             // Card embedding.
@@ -143,121 +149,146 @@ fn encode_slot(
                 .get(s.card_idx as usize)
                 .copied()
                 .unwrap_or([0.0; CARD_EMBED_DIM]);
-            v.extend_from_slice(&embed);
+            out[*cur..*cur + CARD_EMBED_DIM].copy_from_slice(&embed);
+            *cur += CARD_EMBED_DIM;
 
-            // Presence + HP ratio.
-            v.push(1.0);
-            let hp_ratio = if s.max_hp > 0 {
+            // Presence flag.
+            out[*cur] = 1.0;
+            *cur += 1;
+
+            // HP ratio.
+            out[*cur] = if s.max_hp > 0 {
                 (s.current_hp as f32 / s.max_hp as f32).clamp(0.0, 1.0)
             } else {
                 0.0
             };
-            v.push(hp_ratio);
+            *cur += 1;
 
-            // Energy per element (8 floats). Normalise by 5 (a very well-fed
-            // Pokémon rarely has more than 4-5 energy attached).
+            // Energy per element (8 floats, normalised by 5).
             for el in 0..8 {
-                v.push(s.energy[el] as f32 / 5.0);
+                out[*cur] = s.energy[el] as f32 / 5.0;
+                *cur += 1;
             }
 
-            // Status — split into two buckets to let the net give them
-            // different weights:
-            //   "damage over time"     = poisoned | burned
-            //   "action prevention"    = paralyzed | asleep | confused
-            let poisoned = s.has_status(StatusEffect::Poisoned) as u8 as f32;
-            let burned = s.has_status(StatusEffect::Burned) as u8 as f32;
-            let impaired = (s.has_status(StatusEffect::Paralyzed)
+            // Status flags.
+            out[*cur] = s.has_status(StatusEffect::Poisoned) as u8 as f32;
+            *cur += 1;
+            out[*cur] = s.has_status(StatusEffect::Burned) as u8 as f32;
+            *cur += 1;
+            out[*cur] = (s.has_status(StatusEffect::Paralyzed)
                 || s.has_status(StatusEffect::Asleep)
                 || s.has_status(StatusEffect::Confused)) as u8 as f32;
-            v.push(poisoned);
-            v.push(burned);
-            v.push(impaired);
+            *cur += 1;
 
-            // Tool attached?
-            v.push(if s.tool_idx.is_some() { 1.0 } else { 0.0 });
+            // Tool attached.
+            out[*cur] = if s.tool_idx.is_some() { 1.0 } else { 0.0 };
+            *cur += 1;
+            // Total: CARD_EMBED_DIM + 1 + 1 + 8 + 1 + 1 + 1 + 1 = SLOT_DIM ✓
         }
     }
 }
 
 // ------------------------------------------------------------------ //
-// Global encoding
+// Global encoding (cursor-based, zero-allocation)
 // ------------------------------------------------------------------ //
 
-/// Append GLOBAL_DIM floats describing board-level and player-level state.
-fn encode_global(v: &mut Vec<f32>, state: &GameState, db: &CardDb, me: usize) {
-    let start = v.len();
+/// Writes exactly [`GLOBAL_DIM`]
+/// floats starting at `out[*cur]` and advances `*cur` by [`GLOBAL_DIM`].
+///
+/// Assumes `out` is already zeroed (energy one-hot and absent flags are
+/// left as zeros rather than explicitly written).
+fn encode_global_into(
+    out: &mut [f32; FEATURE_DIM],
+    cur: &mut usize,
+    state: &GameState,
+    db: &CardDb,
+    me: usize,
+) {
+    let start = *cur;
     let opp = 1 - me;
     let player = &state.players[me];
     let opp_player = &state.players[opp];
 
-    // Turn number / points / who's first.
-    v.push((state.turn_number.max(0) as f32 / 30.0).min(1.5));
-    v.push(player.points as f32 / 3.0);
-    v.push(opp_player.points as f32 / 3.0);
-    v.push(if state.first_player == me { 1.0 } else { 0.0 });
-    // Is it my turn right now?
-    v.push(if state.current_player == me { 1.0 } else { 0.0 });
-    // Phase flag: 1 if we're in AwaitingBenchPromotion (about to promote).
-    v.push(if state.phase == GamePhase::AwaitingBenchPromotion { 1.0 } else { 0.0 });
+    // 6 scalar globals.
+    out[*cur] = (state.turn_number.max(0) as f32 / 30.0).min(1.5);
+    *cur += 1;
+    out[*cur] = player.points as f32 / 3.0;
+    *cur += 1;
+    out[*cur] = opp_player.points as f32 / 3.0;
+    *cur += 1;
+    out[*cur] = if state.first_player == me { 1.0 } else { 0.0 };
+    *cur += 1;
+    out[*cur] = if state.current_player == me { 1.0 } else { 0.0 };
+    *cur += 1;
+    out[*cur] = if state.phase == GamePhase::AwaitingBenchPromotion { 1.0 } else { 0.0 };
+    *cur += 1;
 
-    // Energy available to me this turn (8-wide one-hot, zero if nothing).
-    let mut eng_oh = [0.0f32; 8];
+    // Energy one-hot (8 floats). Buffer is pre-zeroed; only set the live slot.
     if let Some(el) = player.energy_available {
-        eng_oh[el.idx()] = 1.0;
+        out[*cur + el.idx()] = 1.0;
     }
-    v.extend_from_slice(&eng_oh);
+    *cur += 8;
 
-    // My hand counts by kind + stage.
+    // My hand composition (7 floats).
     let hand_counts = hand_composition(&player.hand, db);
-    v.extend_from_slice(&hand_counts);
+    out[*cur..*cur + 7].copy_from_slice(&hand_counts);
+    *cur += 7;
 
-    // Pile sizes (everything / 20 — deck is 20 cards).
-    v.push(player.hand.len() as f32 / 20.0);
-    v.push(player.deck.len() as f32 / 20.0);
-    v.push(player.discard.len() as f32 / 20.0);
-    v.push(opp_player.hand.len() as f32 / 20.0);
-    v.push(opp_player.deck.len() as f32 / 20.0);
-    v.push(opp_player.discard.len() as f32 / 20.0);
+    // Pile sizes (6 floats).
+    out[*cur] = player.hand.len() as f32 / 20.0;
+    *cur += 1;
+    out[*cur] = player.deck.len() as f32 / 20.0;
+    *cur += 1;
+    out[*cur] = player.discard.len() as f32 / 20.0;
+    *cur += 1;
+    out[*cur] = opp_player.hand.len() as f32 / 20.0;
+    *cur += 1;
+    out[*cur] = opp_player.deck.len() as f32 / 20.0;
+    *cur += 1;
+    out[*cur] = opp_player.discard.len() as f32 / 20.0;
+    *cur += 1;
 
-    // Opponent discard composition (they don't see my hand but I can see
-    // their discard — counts by kind, same as our own hand).
+    // Opponent discard composition (7 floats).
     let opp_discard_counts = hand_composition(&opp_player.discard, db);
-    v.extend_from_slice(&opp_discard_counts);
+    out[*cur..*cur + 7].copy_from_slice(&opp_discard_counts);
+    *cur += 7;
 
-    // Per-turn player flags (me).
-    v.push(if player.has_attached_energy { 1.0 } else { 0.0 });
-    v.push(if player.has_played_supporter { 1.0 } else { 0.0 });
-    v.push(if player.has_retreated { 1.0 } else { 0.0 });
+    // Per-turn flags (3 floats).
+    out[*cur] = if player.has_attached_energy { 1.0 } else { 0.0 };
+    *cur += 1;
+    out[*cur] = if player.has_played_supporter { 1.0 } else { 0.0 };
+    *cur += 1;
+    out[*cur] = if player.has_retreated { 1.0 } else { 0.0 };
+    *cur += 1;
 
-    // Bans on me this turn (from opponent's effects).
-    v.push(if player.cant_play_supporter_this_turn { 1.0 } else { 0.0 });
-    v.push(if player.cant_play_items_this_turn { 1.0 } else { 0.0 });
-    v.push(if player.cant_attach_energy_this_turn { 1.0 } else { 0.0 });
+    // Ban flags (3 floats).
+    out[*cur] = if player.cant_play_supporter_this_turn { 1.0 } else { 0.0 };
+    *cur += 1;
+    out[*cur] = if player.cant_play_items_this_turn { 1.0 } else { 0.0 };
+    *cur += 1;
+    out[*cur] = if player.cant_attach_energy_this_turn { 1.0 } else { 0.0 };
+    *cur += 1;
 
-    // Draw aura / damage aura bonus (tiny single float — compresses Giovanni
-    // / Lusamine / other stack-modifier effects into one scalar).
-    v.push(player.attack_damage_bonus as f32 / 3.0);
+    // Damage bonus (1 float).
+    out[*cur] = player.attack_damage_bonus as f32 / 3.0;
+    *cur += 1;
 
-    // ---- Tactical active-vs-active features (v2, 8 floats) ----
-    // These give the net explicit KO-threat and energy-readiness signals
-    // it would otherwise have to infer indirectly from raw HP/energy counts.
+    // Tactical features (8 floats).
     let tactical = tactical_features(state, db, me);
-    v.extend_from_slice(&tactical);
+    out[*cur..*cur + 8].copy_from_slice(&tactical);
+    *cur += 8;
 
-    // ---- Supporter category + board-context features (v2, 11 floats) ----
-    // Trainer card embeddings are nearly identical (all zeros for hp/element/attacks),
-    // so the net cannot distinguish Sabrina from Giovanni from the slot features alone.
-    // These flags explicitly tell the net what types of supporter are available and
-    // whether the current board state makes them worth playing.
+    // Supporter features (11 floats).
     let supporter = supporter_features(state, db, me);
-    v.extend_from_slice(&supporter);
+    out[*cur..*cur + 11].copy_from_slice(&supporter);
+    *cur += 11;
 
     debug_assert_eq!(
-        v.len() - start,
+        *cur - start,
         GLOBAL_DIM,
         "global dim mismatch: wrote {}, expected {}",
-        v.len() - start,
-        GLOBAL_DIM
+        *cur - start,
+        GLOBAL_DIM,
     );
 }
 
@@ -451,7 +482,7 @@ fn supporter_features(state: &GameState, db: &CardDb, me: usize) -> [f32; 11] {
                 | EffectKind::AttachEnergyZoneSelfN { .. }
                 | EffectKind::AttachEnergyZoneNamed { .. }
                 | EffectKind::AttachEnergyZoneToGrass
-                | EffectKind::AttachEnergyZoneSelfBracket
+                | EffectKind::AttachEnergyZoneSelfBracket { .. }
                 | EffectKind::AttachEnergyNamedEndTurn { .. }
                 | EffectKind::CoinFlipUntilTailsAttachEnergy
                 | EffectKind::MoveBenchEnergyToActive => {
@@ -631,7 +662,7 @@ mod tests {
             Some(PokemonSlot::new(bulb.idx, bulb.hp));
         state.players[1].active =
             Some(PokemonSlot::new(bulb.idx, bulb.hp));
-        state.players[0].hand = vec![bulb.idx, bulb.idx];
+        state.players[0].hand = smallvec::smallvec![bulb.idx, bulb.idx];
 
         let v1 = encode(&state, &db, 0);
         let v2 = encode(&state, &db, 0);

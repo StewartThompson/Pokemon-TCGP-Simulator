@@ -241,11 +241,11 @@ mod tests {
         let mut state = GameState::new(42);
         state.phase = GamePhase::Main;
         state.turn_number = -1;
-        let deck: Vec<u16> = vec![bulbasaur.idx; 20];
+        let deck: smallvec::SmallVec<[u16; 20]> = std::iter::repeat(bulbasaur.idx).take(20).collect();
         state.players[0].deck = deck.clone();
         state.players[1].deck = deck;
-        state.players[0].energy_types = vec![Element::Grass];
-        state.players[1].energy_types = vec![Element::Grass];
+        state.players[0].energy_types = smallvec::smallvec![Element::Grass];
+        state.players[1].energy_types = smallvec::smallvec![Element::Grass];
         // Set active Pokemon for both players so the state is valid.
         state.players[0].active = Some(PokemonSlot::new(bulbasaur.idx, bulbasaur.hp));
         state.players[1].active = Some(PokemonSlot::new(bulbasaur.idx, bulbasaur.hp));
@@ -297,7 +297,7 @@ mod tests {
     fn start_turn_energy_is_set_from_pool() {
         let db = load_db();
         let mut state = make_state_with_deck(&db);
-        state.players[0].energy_types = vec![Element::Fire];
+        state.players[0].energy_types = smallvec::smallvec![Element::Fire];
         // Advance to a non-zero turn for player 0.
         start_turn(&mut state, &db); // turn 0
         end_turn(&mut state);

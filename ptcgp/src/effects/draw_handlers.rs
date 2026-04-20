@@ -507,7 +507,7 @@ mod tests {
     #[test]
     fn shuffle_hand_into_deck_empties_hand_and_grows_deck() {
         let mut state = make_state_with_deck(2, 5);
-        state.players[0].hand = vec![10, 11, 12];
+        state.players[0].hand = smallvec::smallvec![10, 11, 12];
         let ctx = EffectContext::new(0);
 
         shuffle_hand_into_deck(&mut state, &ctx);
@@ -538,7 +538,7 @@ mod tests {
         let idx = bulbasaur_idx.unwrap();
 
         let mut state = GameState::new(7);
-        state.players[0].deck = vec![idx, idx + 1, idx + 2];
+        state.players[0].deck = smallvec::smallvec![idx, idx + 1, idx + 2];
         let ctx = EffectContext::new(0);
 
         search_deck_named(&mut state, &db, "Bulbasaur", &ctx);
@@ -553,8 +553,8 @@ mod tests {
     fn iono_each_player_draws_own_hand_size() {
         let mut state = GameState::new(3);
         // Player 0 has 3 cards in hand, player 1 has 5 cards in hand
-        state.players[0].hand = vec![1, 2, 3];
-        state.players[1].hand = vec![4, 5, 6, 7, 8];
+        state.players[0].hand = smallvec::smallvec![1, 2, 3];
+        state.players[1].hand = smallvec::smallvec![4, 5, 6, 7, 8];
         // Give each player a deck to draw from
         state.players[0].deck = (10..20).collect();
         state.players[1].deck = (20..30).collect();
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn discard_random_card_opponent_reduces_opponent_hand() {
         let mut state = GameState::new(4);
-        state.players[1].hand = vec![10, 11, 12];
+        state.players[1].hand = smallvec::smallvec![10, 11, 12];
         let ctx = EffectContext::new(0);
 
         discard_random_card_opponent(&mut state, &ctx);

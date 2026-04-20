@@ -57,12 +57,12 @@ pub fn determinize_for(state: &GameState, acting_player: usize, rng_seed: u64) -
     if hand_size > pool.len() {
         // Extreme edge case: shouldn't happen in practice. Re-populate what
         // we can and leave the deck empty.
-        s.players[opp].hand = pool;
-        s.players[opp].deck = Vec::new();
+        s.players[opp].hand = pool.into_iter().collect();
+        s.players[opp].deck = smallvec::SmallVec::new();
     } else {
         let (new_hand, rest) = pool.split_at(hand_size);
-        s.players[opp].hand = new_hand.to_vec();
-        s.players[opp].deck = rest.to_vec();
+        s.players[opp].hand = new_hand.iter().copied().collect();
+        s.players[opp].deck = rest.iter().copied().collect();
     }
 
     // Re-seed so that cloned sims follow diverse random trajectories.
@@ -80,8 +80,8 @@ mod tests {
     fn determinize_preserves_hand_size() {
         let mut state = GameState::new(0);
         state.phase = GamePhase::Main;
-        state.players[1].hand = vec![1, 2, 3, 4, 5];
-        state.players[1].deck = vec![10, 11, 12, 13, 14, 15];
+        state.players[1].hand = smallvec::smallvec![1, 2, 3, 4, 5];
+        state.players[1].deck = smallvec::smallvec![10, 11, 12, 13, 14, 15];
 
         let d = determinize_for(&state, 0, 42);
         assert_eq!(d.players[1].hand.len(), 5);
@@ -97,8 +97,8 @@ mod tests {
     #[test]
     fn determinize_different_seeds_produce_different_hands() {
         let mut state = GameState::new(0);
-        state.players[1].hand = vec![1, 2, 3, 4, 5];
-        state.players[1].deck = vec![10, 11, 12, 13, 14, 15, 16, 17];
+        state.players[1].hand = smallvec::smallvec![1, 2, 3, 4, 5];
+        state.players[1].deck = smallvec::smallvec![10, 11, 12, 13, 14, 15, 16, 17];
 
         let a = determinize_for(&state, 0, 1);
         let b = determinize_for(&state, 0, 2);
@@ -109,11 +109,11 @@ mod tests {
     #[test]
     fn determinize_leaves_acting_player_untouched() {
         let mut state = GameState::new(0);
-        state.players[0].hand = vec![100, 200, 300];
-        state.players[0].deck = vec![400, 500];
+        state.players[0].hand = smallvec::smallvec![100, 200, 300];
+        state.players[0].deck = smallvec::smallvec![400, 500];
 
         let d = determinize_for(&state, 0, 42);
-        assert_eq!(d.players[0].hand, vec![100, 200, 300]);
-        assert_eq!(d.players[0].deck, vec![400, 500]);
+        assert_eq!(d.players[0].hand.as_slice(), &[100u16, 200, 300]);
+        assert_eq!(d.players[0].deck.as_slice(), &[400u16, 500]);
     }
 }

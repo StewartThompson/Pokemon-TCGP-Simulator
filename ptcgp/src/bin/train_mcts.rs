@@ -42,7 +42,8 @@ use ptcgp::ml::{
     features::FEATURE_DIM,
     league::{pick_opponent, Opponent},
     net::make_optimizer,
-    play_training_game, train_epoch, LeafValue, MctsAgent, MctsConfig, ReplayBuffer, ValueNet,
+    play_training_game, train_epoch, InferenceNet, LeafValue, MctsAgent, MctsConfig, ReplayBuffer,
+    ValueNet,
 };
 use ptcgp::agents::Agent as AgentTrait;
 use ptcgp::types::Element;
@@ -102,6 +103,13 @@ struct Args {
     /// prone to drift / rock-paper-scissors collapse over many gens).
     #[arg(long, default_value_t = true)]
     league: bool,
+    /// MCTS sim count for league *opponents* (past-gen agents). Defaults to
+    /// half of --mcts-sims. Lower values speed up the 30% of league games
+    /// where both sides run MCTS, with negligible training quality impact
+    /// (past-gen opponents exist to prevent forgetting, not to be maximally
+    /// strong).
+    #[arg(long)]
+    league_opp_sims: Option<usize>,
     /// Hybrid leaf-eval weight for the value net: 0.0 = pure rollouts, 1.0
     /// = pure NN. In between blends both. Original-AlphaGo–style; guards
     /// against the NN being wrong on out-of-distribution states. Default
@@ -309,7 +317,7 @@ fn main() -> candle_core::Result<()> {
             std::collections::HashMap::new();
         if args.league {
             for &g in &recent_past {
-                match load_generation(&args.checkpoint_dir, g, infer_device.clone(), 1) {
+                match load_generation(&args.checkpoint_dir, g, infer_device.clone(), 0) {
                     Ok((pnet, _, _)) => {
                         past_map.insert(g, Arc::new(pnet));
                     }
@@ -319,15 +327,41 @@ fn main() -> candle_core::Result<()> {
         }
         let past_arc = Arc::new(past_map);
 
+        // Build InferenceNet from current net (pure-Rust weights, zero-alloc
+        // leaf eval — eliminates all Candle tensor overhead during self-play).
+        let inet = Arc::new(
+            net_arc
+                .to_inference_net()
+                .map_err(|e| candle_core::Error::Msg(format!("to_inference_net: {e}")))?,
+        );
+        // Build InferenceNets for each past-gen net so league opponents also
+        // benefit from zero-alloc leaf eval.
+        let past_inet_map: std::collections::HashMap<u32, Arc<InferenceNet>> = past_arc
+            .iter()
+            .filter_map(|(&g, pnet)| {
+                pnet.to_inference_net()
+                    .ok()
+                    .map(|pi| (g, Arc::new(pi)))
+            })
+            .collect();
+        let past_inets_arc = Arc::new(past_inet_map);
+
+        // League opponents use fewer sims to keep league-game overhead low.
+        // Past-gen agents exist for anti-forgetting diversity, not max strength.
+        let league_opp_sims = args.league_opp_sims.unwrap_or(args.mcts_sims / 2);
+
         let sp_t = Instant::now();
         let self_play_samples = collect_selfplay_samples(
             &db,
             &embed_cache,
             net_arc.clone(),     // CPU net — safe for rayon
+            inet.clone(),
             &past_arc,
+            &past_inets_arc,
             &deck_pool,
             args.games_per_gen,
             args.mcts_sims,
+            league_opp_sims,
             args.seed.wrapping_add(gen as u64 * 1_000_003),
             args.league,
             args.hybrid_weight,
@@ -467,14 +501,21 @@ fn main() -> candle_core::Result<()> {
 /// the current value net as the focal agent; the opponent is sampled
 /// from the league distribution (self-mirror / past gen / heuristic).
 /// Returns all focal-player samples concatenated.
+///
+/// `inet` and `past_inets` are pure-Rust inference copies of the current
+/// and past-gen nets respectively, built once before the parallel loop so
+/// all rayon workers share the same allocations without duplication.
 fn collect_selfplay_samples(
     db: &Arc<CardDb>,
     embed_cache: &Arc<Vec<[f32; ptcgp::ml::card_embed::CARD_EMBED_DIM]>>,
     net: Arc<ValueNet>,
+    inet: Arc<InferenceNet>,
     past_nets: &Arc<std::collections::HashMap<u32, Arc<ValueNet>>>,
+    past_inets: &Arc<std::collections::HashMap<u32, Arc<InferenceNet>>>,
     deck_pool: &[DeckPair],
     games: usize,
     mcts_sims: usize,
+    league_opp_sims: usize,
     base_seed: u64,
     use_league: bool,
     hybrid_weight: f32,
@@ -512,8 +553,11 @@ fn collect_selfplay_samples(
                 use_dirichlet: true, // Dirichlet root noise for exploration diversity
                 ..Default::default()
             };
+            // Focal agent: share embed_cache + inference_net to avoid per-agent allocs.
             let focal = MctsAgent::new(config.clone(), db.clone())
                 .with_net(net.clone())
+                .with_inference_net(inet.clone())
+                .with_embed_cache(embed_cache.clone())
                 .with_seed(base_seed.wrapping_add(i as u64 * 101));
 
             // Pick opponent type via league (if enabled), else always self-mirror.
@@ -523,43 +567,77 @@ fn collect_selfplay_samples(
             } else {
                 Opponent::SelfMirror
             };
-            // Build the opponent agent. Boxing lets us return a unified type.
+            // Build the opponent agent. Opponents never need Dirichlet noise
+            // (that's exploration for the focal agent only — samples come from
+            // the focal player's perspective). Disabling it saves ~1 random
+            // sample + sort per MCTS root expansion.
+            let opp_base_config = MctsConfig {
+                use_dirichlet: false,
+                temperature: 0.0, // deterministic opponent play
+                ..config.clone()
+            };
+            let opp_seed = base_seed.wrapping_add(i as u64 * 101 + 37);
             let opp: Box<dyn AgentTrait + Send + Sync> = match opp_kind {
                 Opponent::SelfMirror => Box::new(
-                    MctsAgent::new(config.clone(), db.clone())
+                    MctsAgent::new(opp_base_config, db.clone())
                         .with_net(net.clone())
-                        .with_seed(base_seed.wrapping_add(i as u64 * 101 + 37)),
+                        .with_inference_net(inet.clone())
+                        .with_embed_cache(embed_cache.clone())
+                        .with_seed(opp_seed),
                 ),
                 Opponent::PastGen(g) => {
-                    if let Some(past_net) = past_nets.get(&g) {
-                        Box::new(
-                            MctsAgent::new(config.clone(), db.clone())
-                                .with_net(past_net.clone())
-                                .with_seed(base_seed.wrapping_add(i as u64 * 101 + 37)),
-                        )
-                    } else {
-                        // Shouldn't happen — pick_opponent only returns gens
-                        // from past_gens — but fall back to self-mirror.
-                        Box::new(
-                            MctsAgent::new(config.clone(), db.clone())
-                                .with_net(net.clone())
-                                .with_seed(base_seed.wrapping_add(i as u64 * 101 + 37)),
-                        )
+                    let opp_config = MctsConfig {
+                        total_sims: league_opp_sims,
+                        ..opp_base_config.clone()
+                    };
+                    match (past_nets.get(&g), past_inets.get(&g)) {
+                        (Some(pnet), Some(pinet)) => Box::new(
+                            MctsAgent::new(opp_config, db.clone())
+                                .with_net(pnet.clone())
+                                .with_inference_net(pinet.clone())
+                                .with_embed_cache(embed_cache.clone())
+                                .with_seed(opp_seed),
+                        ),
+                        (Some(pnet), None) => Box::new(
+                            MctsAgent::new(opp_config, db.clone())
+                                .with_net(pnet.clone())
+                                .with_embed_cache(embed_cache.clone())
+                                .with_seed(opp_seed),
+                        ),
+                        _ => {
+                            // Shouldn't happen — pick_opponent only returns gens
+                            // from past_gens — but fall back to self-mirror.
+                            Box::new(
+                                MctsAgent::new(opp_base_config, db.clone())
+                                    .with_net(net.clone())
+                                    .with_inference_net(inet.clone())
+                                    .with_embed_cache(embed_cache.clone())
+                                    .with_seed(opp_seed),
+                            )
+                        }
                     }
                 }
                 Opponent::Heuristic => Box::new(ptcgp::agents::HeuristicAgent),
             };
 
-            let (deck, energy) = &deck_pool[i % deck_pool.len()];
+            // Assign decks: focal gets deck[i % n], opponent gets a
+            // *different* deck (deck[(i + n/2) % n]).  Asymmetric matchups
+            // (e.g. pikachu vs charizard) give more decisive games, expose
+            // the agent to diverse opponents, and reduce draw rates vs
+            // mirror-match self-play on slow/healing-heavy decks.
+            let n = deck_pool.len();
+            let (focal_deck, focal_energy) = &deck_pool[i % n];
+            let opp_deck_idx = if n > 1 { (i + n / 2) % n } else { 0 };
+            let (opp_deck, opp_energy) = &deck_pool[opp_deck_idx];
 
             play_training_game(
                 db.as_ref(),
                 &focal,
                 opp.as_ref(),
-                deck.clone(),
-                deck.clone(),
-                energy.clone(),
-                energy.clone(),
+                focal_deck.clone(),
+                opp_deck.clone(),
+                focal_energy.clone(),
+                opp_energy.clone(),
                 base_seed.wrapping_add(i as u64),
                 embed_cache.as_slice(),
             )
@@ -642,7 +720,7 @@ fn resolve_eval_opponent(
             ("heuristic".to_string(), Arc::new(HeuristicAgent) as Arc<dyn Agent>)
         }
         Some(g) => {
-            match load_generation(checkpoint_dir, g, device.clone(), 1) {
+            match load_generation(checkpoint_dir, g, device.clone(), 0) {
                 Ok((net, _, _)) => {
                     let (leaf_value, depth_cap) = if heuristic_rollouts {
                         (LeafValue::HeuristicRollout, heuristic_rollout_depth)

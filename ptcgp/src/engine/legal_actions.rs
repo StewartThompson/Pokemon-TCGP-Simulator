@@ -507,7 +507,7 @@ pub fn get_legal_actions(state: &GameState, db: &CardDb) -> Vec<Action> {
     // ------------------------------------------------------------------ //
     if state.turn_number >= 2 {
         // Snapshot hand to avoid re-borrow issues.
-        let hand_snapshot: Vec<u16> = state.current().hand.clone();
+        let hand_snapshot: Vec<u16> = state.current().hand.to_vec();
         for (i, &card_idx) in hand_snapshot.iter().enumerate() {
             let evo_card = db.get_by_idx(card_idx);
             if evo_card.kind != CardKind::Pokemon {

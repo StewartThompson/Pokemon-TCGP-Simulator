@@ -178,7 +178,7 @@ pub fn supporter_damage_aura(
         player.attack_damage_bonus = amount;
     }
     if !names.is_empty() {
-        player.attack_damage_bonus_names = names.to_vec();
+        player.attack_damage_bonus_names = names.iter().cloned().collect();
     }
 }
 
@@ -191,7 +191,7 @@ pub fn supporter_damage_aura_vs_ex(state: &mut GameState, amount: i8, ctx: &Effe
         player.attack_damage_bonus = amount;
     }
     // The name filter "ex" acts as a sentinel; the damage pipeline must handle it.
-    player.attack_damage_bonus_names = vec!["ex".to_string()];
+    player.attack_damage_bonus_names = smallvec::smallvec!["ex".to_string()];
 }
 
 /// X Speed: reduce the retreat cost of the acting player's Active Pokémon by `amount` this turn.

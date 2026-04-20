@@ -1,5 +1,6 @@
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
+use smallvec::SmallVec;
 use crate::types::{EnergyArray, Element, GamePhase, StatusEffect, energy_get, energy_add, energy_sub, energy_total};
 use crate::actions::SlotRef;
 
@@ -118,9 +119,9 @@ impl PokemonSlot {
 pub struct PlayerState {
     pub active: Option<PokemonSlot>,
     pub bench: [Option<PokemonSlot>; 3],
-    pub hand: Vec<u16>,
-    pub deck: Vec<u16>,
-    pub discard: Vec<u16>,
+    pub hand: SmallVec<[u16; 12]>,
+    pub deck: SmallVec<[u16; 20]>,
+    pub discard: SmallVec<[u16; 20]>,
     /// Energies that have been removed from this player's Pokémon (by attacks
     /// that discard energy, by KO, or by retreat) and are now "in the discard
     /// pile".  PTCGP doesn't have energy cards, so this is the only way a
@@ -128,7 +129,7 @@ pub struct PlayerState {
     /// can find energy to recycle.  Indexed by `Element as usize`.
     pub energy_discard: crate::types::EnergyArray,
     pub points: u8,
-    pub energy_types: Vec<Element>,
+    pub energy_types: SmallVec<[Element; 4]>,
     pub energy_available: Option<Element>,
     // Per-turn flags
     pub has_attached_energy: bool,
@@ -136,7 +137,7 @@ pub struct PlayerState {
     pub has_retreated: bool,
     // Turn-scoped buffs
     pub attack_damage_bonus: i8,
-    pub attack_damage_bonus_names: Vec<String>,
+    pub attack_damage_bonus_names: SmallVec<[String; 2]>,
     pub retreat_cost_modifier: i8,
     pub cant_play_supporter_this_turn: bool,
     pub cant_play_supporter_incoming: bool,
@@ -162,18 +163,18 @@ impl Default for PlayerState {
         Self {
             active: None,
             bench: [None, None, None],
-            hand: Vec::new(),
-            deck: Vec::new(),
-            discard: Vec::new(),
+            hand: SmallVec::new(),
+            deck: SmallVec::new(),
+            discard: SmallVec::new(),
             energy_discard: [0; 8],
             points: 0,
-            energy_types: Vec::new(),
+            energy_types: SmallVec::new(),
             energy_available: None,
             has_attached_energy: false,
             has_played_supporter: false,
             has_retreated: false,
             attack_damage_bonus: 0,
-            attack_damage_bonus_names: Vec::new(),
+            attack_damage_bonus_names: SmallVec::new(),
             retreat_cost_modifier: 0,
             cant_play_supporter_this_turn: false,
             cant_play_supporter_incoming: false,

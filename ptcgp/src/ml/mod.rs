@@ -41,7 +41,7 @@ pub use checkpoint::{
 };
 pub use league::{pick_opponent, Opponent};
 pub use mcts::{LeafValue, MctsAgent, MctsConfig};
-pub use net::{best_device, huber_loss, is_metal, make_optimizer, ValueNet, ValueOutputs, HIDDEN_DIM};
+pub use net::{best_device, huber_loss, is_metal, make_optimizer, InferenceNet, ValueNet, ValueOutputs, HIDDEN_DIM};
 pub use nn_greedy::NnGreedyAgent;
 pub use replay::{ReplayBuffer, Sample};
 pub use selfplay::{play_training_game, RecordingAgent};

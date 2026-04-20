@@ -37,8 +37,16 @@ use crate::types::{ActionKind, GamePhase};
 
 use super::card_embed::{build_embed_cache, CARD_EMBED_DIM};
 use super::determinize::determinize_for;
-use super::features::encode_with_cache;
-use super::net::ValueNet;
+use super::features::{encode_into, encode_with_cache, FEATURE_DIM};
+use super::net::{InferenceNet, ValueNet};
+
+// Thread-local scratch buffer for zero-allocation feature encoding in the
+// MCTS hot path. Each rayon worker gets its own buffer (thread_local is
+// per-thread), so no synchronisation overhead even under heavy parallelism.
+thread_local! {
+    static FEATURE_BUF: std::cell::RefCell<[f32; FEATURE_DIM]> =
+        std::cell::RefCell::new([0.0f32; FEATURE_DIM]);
+}
 
 // ------------------------------------------------------------------ //
 // Config
@@ -124,14 +132,18 @@ pub struct MctsAgent {
     /// `state.turn_number + player_idx` so repeated calls on identical
     /// states explore differently across games.
     pub rng_seed: u64,
-    /// Optional learned value net. Only consulted when
-    /// `config.leaf_value_source == LeafValue::ValueNet`. Shared across
-    /// rayon threads via `Arc`.
+    /// Optional learned value net (Candle). Fallback when `inference_net` is
+    /// absent. Kept for backward compatibility and training-time eval.
     pub net: Option<Arc<ValueNet>>,
     /// Pre-computed card embeddings. Built once from the `CardDb` and
     /// reused on every feature encoding during search — avoids rebuilding
-    /// the cache on each hot-path call.
+    /// the cache on each hot-path call. Can be shared across agents via
+    /// [`MctsAgent::with_embed_cache`] to avoid duplicate allocations.
     pub embed_cache: Arc<Vec<[f32; CARD_EMBED_DIM]>>,
+    /// Pure-Rust inference net — zero allocation per call, no Candle tensors.
+    /// When present, this takes priority over `net` for leaf evaluation.
+    /// Build via [`ValueNet::to_inference_net`] and share via `Arc`.
+    pub inference_net: Option<Arc<InferenceNet>>,
 }
 
 impl MctsAgent {
@@ -143,6 +155,7 @@ impl MctsAgent {
             rng_seed: 0xCAFE_BABE_DEAD_BEEF,
             net: None,
             embed_cache,
+            inference_net: None,
         }
     }
 
@@ -151,10 +164,27 @@ impl MctsAgent {
         self
     }
 
-    /// Attach a value net. Required when
-    /// `config.leaf_value_source == LeafValue::ValueNet`.
+    /// Attach a Candle value net (fallback when `inference_net` is absent).
     pub fn with_net(mut self, net: Arc<ValueNet>) -> Self {
         self.net = Some(net);
+        self
+    }
+
+    /// Attach a pure-Rust inference net. When present, leaf evaluation uses
+    /// this instead of `net` — eliminating all Candle tensor overhead.
+    ///
+    /// Build with `ValueNet::to_inference_net()` after each training step and
+    /// share via `Arc` across all rayon workers for the same generation.
+    pub fn with_inference_net(mut self, inet: Arc<InferenceNet>) -> Self {
+        self.inference_net = Some(inet);
+        self
+    }
+
+    /// Replace the internally-built embed cache with a shared one. Use this
+    /// when constructing many agents for the same `CardDb` (e.g. all rayon
+    /// workers in a generation) to avoid duplicate allocations.
+    pub fn with_embed_cache(mut self, cache: Arc<Vec<[f32; CARD_EMBED_DIM]>>) -> Self {
+        self.embed_cache = cache;
         self
     }
 }
@@ -210,6 +240,7 @@ impl Agent for MctsAgent {
             player_idx,
             self.config.clone(),
             per_call_seed,
+            self.inference_net.as_deref(),
             self.net.as_deref(),
             self.embed_cache.as_slice(),
         );
@@ -278,8 +309,9 @@ struct Tree<'a> {
     root: usize,
     config: MctsConfig,
     rng: SmallRng,
-    /// Optional value net — borrowed, not owned, so the same net is shared
-    /// across many tree instances (one per MCTS call).
+    /// Pure-Rust inference net (fast path). When present, `net` is ignored.
+    inet: Option<&'a InferenceNet>,
+    /// Candle value net (fallback when `inet` is absent).
     net: Option<&'a ValueNet>,
     /// Card-embed cache for feature encoding at value-net leaves.
     embed_cache: &'a [[f32; CARD_EMBED_DIM]],
@@ -290,6 +322,7 @@ impl<'a> Tree<'a> {
         root_player: usize,
         config: MctsConfig,
         seed: u64,
+        inet: Option<&'a InferenceNet>,
         net: Option<&'a ValueNet>,
         embed_cache: &'a [[f32; CARD_EMBED_DIM]],
     ) -> Self {
@@ -299,6 +332,7 @@ impl<'a> Tree<'a> {
             root: 0,
             config,
             rng: SmallRng::seed_from_u64(seed),
+            inet,
             net,
             embed_cache,
         }
@@ -493,7 +527,7 @@ impl<'a> Tree<'a> {
     }
 
     /// Run NN forward on `state` and return the win value from the root
-    /// player's perspective. 0 on any error or missing net.
+    /// player's perspective. Returns 0 when no net is attached.
     ///
     /// Training data (selfplay.rs) records BOTH players' decisions, each
     /// from their own POV with win_target = that player's outcome.  The net
@@ -504,19 +538,32 @@ impl<'a> Tree<'a> {
     /// distribution.  The output is always "current_player wins probability",
     /// which we negate when current_player ≠ root_player to convert to
     /// root_player's perspective for backup.
+    ///
+    /// Fast path: when `self.inet` is set (pure-Rust weights), we write into
+    /// a thread-local `[f32; FEATURE_DIM]` and call `inet.win_value` — zero
+    /// heap allocation, no Candle tensors.  Fallback: use the Candle net via
+    /// `encode_with_cache` + `win_value` (allocates a `Vec<f32>`).
     fn net_value(&self, state: &GameState, db: &CardDb) -> f64 {
-        match self.net {
-            Some(net) => {
-                let current_player = whose_turn(state);
-                let features =
-                    encode_with_cache(state, db, current_player, self.embed_cache);
-                let v = net.win_value(&features).map(|v| v as f64).unwrap_or(0.0);
-                // v = current_player's estimated win probability.
-                // Convert to root_player's perspective for backup.
-                if current_player == self.root_player { v } else { -v }
-            }
-            None => 0.0,
+        let current_player = whose_turn(state);
+
+        // ── Fast path: InferenceNet (pure Rust, zero allocation) ──────────
+        if let Some(inet) = self.inet {
+            let v = FEATURE_BUF.with(|cell| {
+                let mut buf = cell.borrow_mut();
+                encode_into(state, db, current_player, self.embed_cache, &mut *buf);
+                inet.win_value(&*buf) as f64
+            });
+            return if current_player == self.root_player { v } else { -v };
         }
+
+        // ── Fallback: Candle ValueNet (allocates Vec<f32>) ────────────────
+        if let Some(net) = self.net {
+            let features = encode_with_cache(state, db, current_player, self.embed_cache);
+            let v = net.win_value(&features).map(|v| v as f64).unwrap_or(0.0);
+            return if current_player == self.root_player { v } else { -v };
+        }
+
+        0.0
     }
 
     /// Play forward until terminal or `max_steps` plies exhausted. Uses
@@ -832,8 +879,8 @@ mod tests {
         state.turn_number = 2;
         state.players[0].active = Some(crate::state::PokemonSlot::new(bulb.idx, bulb.hp));
         state.players[1].active = Some(crate::state::PokemonSlot::new(bulb.idx, bulb.hp));
-        state.players[0].energy_types = vec![crate::types::Element::Grass];
-        state.players[1].energy_types = vec![crate::types::Element::Grass];
+        state.players[0].energy_types = smallvec::smallvec![crate::types::Element::Grass];
+        state.players[1].energy_types = smallvec::smallvec![crate::types::Element::Grass];
 
         let action = agent.select_action(&state, &db, 0);
         // Should be one of the legal Main-phase action kinds — not panic.
@@ -861,7 +908,7 @@ mod tests {
         let bulb = db.get_by_id("a1-001").expect("a1-001 not found");
         let mut state = GameState::new(1);
         state.phase = GamePhase::Setup;
-        state.players[0].hand = vec![bulb.idx];
+        state.players[0].hand = smallvec::smallvec![bulb.idx];
 
         let action = agent.select_action(&state, &db, 0);
         assert_eq!(action.kind, ActionKind::PlayCard);

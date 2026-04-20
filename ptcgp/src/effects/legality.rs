@@ -914,7 +914,7 @@ mod tests {
         let mut s = empty_state();
         s.players[0].active = Some(PokemonSlot::new(0, 100));
         s.players[1].active = Some(PokemonSlot::new(0, 100));
-        s.players[1].hand = vec![0u16, 0u16]; // 2 cards
+        s.players[1].hand = smallvec::smallvec![0u16, 0u16]; // 2 cards
         let conds = vec![LegalCondition::OppHandAtLeast { count: 3 }];
         let out = enumerate_legal_actions(&conds, &s, &db, 0, BaseAction::PlayItem { hand_index: 0 });
         assert!(out.is_empty());

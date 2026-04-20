@@ -864,7 +864,7 @@ pub fn discard_top_deck(state: &mut GameState, ctx: &EffectContext, count: usize
         return;
     }
     let split_at = p.deck.len() - to_discard;
-    let discarded: Vec<u16> = p.deck.split_off(split_at);
+    let discarded: Vec<u16> = p.deck.drain(split_at..).collect();
     p.discard.extend(discarded);
 }
 
@@ -1126,14 +1126,14 @@ mod tests {
         let mut state = GameState::new(1);
         // deck Vec uses pop() for draw, so top of deck = LAST element.
         // For deck [1, 2, 3, 4, 5], the top is 5.
-        state.players[0].deck = vec![1, 2, 3, 4, 5];
+        state.players[0].deck = smallvec::smallvec![1, 2, 3, 4, 5];
         let ctx = ctx(0);
         discard_top_deck(&mut state, &ctx, 3);
         assert_eq!(state.players[0].deck.len(), 2);
         assert_eq!(state.players[0].discard.len(), 3);
         // Top 3 (5, 4, 3) discarded; bottom 2 (1, 2) remain.
-        assert_eq!(state.players[0].deck, vec![1, 2]);
-        assert_eq!(state.players[0].discard, vec![3, 4, 5]);
+        assert_eq!(state.players[0].deck.as_slice(), &[1u16, 2]);
+        assert_eq!(state.players[0].discard.as_slice(), &[3u16, 4, 5]);
     }
 
     #[test]

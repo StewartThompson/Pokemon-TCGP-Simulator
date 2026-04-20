@@ -132,8 +132,8 @@ mod tests {
         state.turn_number = 0;
         state.players[0].active = Some(PokemonSlot::new(bulb.idx, bulb.hp));
         state.players[1].active = Some(PokemonSlot::new(bulb.idx, bulb.hp));
-        state.players[0].energy_types = vec![Element::Grass];
-        state.players[1].energy_types = vec![Element::Grass];
+        state.players[0].energy_types = smallvec::smallvec![Element::Grass];
+        state.players[1].energy_types = smallvec::smallvec![Element::Grass];
         state
     }
 

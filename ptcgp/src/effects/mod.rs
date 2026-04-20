@@ -252,6 +252,10 @@ pub enum EffectKind {
     BeastWallProtection,
     RareCandyEvolve,
     HpBonus { amount: i16 },
+    /// Item: every Basic Pokémon currently in play (both players, active +
+    /// bench) gets `+amount` HP applied to both `max_hp` and `current_hp`.
+    /// Used by Starting Plains.  Applied at play time as a one-shot effect.
+    AllBasicsHpBonus { amount: i16 },
     /// At end of acting player's turn, if this Pokémon is in the Active Spot,
     /// draw `count` card(s) (Suicune ex / Entei ex Legendary Pulse).
     EndOfTurnIfActiveDraw { count: u8 },
@@ -807,6 +811,9 @@ fn parse_single_effect(s: &str) -> Option<EffectKind> {
         "beast_wall_protection" => EffectKind::BeastWallProtection,
         "rare_candy_evolve" => EffectKind::RareCandyEvolve,
         "hp_bonus" => EffectKind::HpBonus {
+            amount: get_i16(&params, "amount", 0),
+        },
+        "all_basics_hp_bonus" => EffectKind::AllBasicsHpBonus {
             amount: get_i16(&params, "amount", 0),
         },
         "end_of_turn_if_active_draw" => EffectKind::EndOfTurnIfActiveDraw {

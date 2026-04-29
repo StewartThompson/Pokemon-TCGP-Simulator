@@ -1,0 +1,282 @@
+Compute device: training=Metal (Apple GPU) 🍎, inference=CPU (rayon parallel)
+Resuming from gen_406/
+  loaded gen=406  replay_size=80000  total_games=162400  wall=83.0s
+
+================ GEN 407 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17876 samples from 400 games in 95.1s (4.2 games/s)
+  train:     batches=400  loss_win=0.1968  loss_prize=0.1670  loss_hp=0.1074  loss_policy=0.3264  (2.5s)
+  eval:      vs_mcts-raw:720 = 56.8% score  (100 games, 26.9s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_407/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 56.8%)
+
+================ GEN 408 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18412 samples from 400 games in 112.4s (3.6 games/s)
+  train:     batches=400  loss_win=0.1976  loss_prize=0.1718  loss_hp=0.1076  loss_policy=0.3330  (2.4s)
+  eval:      vs_mcts-raw:720 = 61.5% score  (100 games, 25.5s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_408/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 61.5%)
+
+================ GEN 409 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18680 samples from 400 games in 97.6s (4.1 games/s)
+  train:     batches=400  loss_win=0.1970  loss_prize=0.1754  loss_hp=0.1070  loss_policy=0.3404  (2.8s)
+  eval:      vs_mcts-raw:720 = 59.9% score  (100 games, 26.4s)
+  saved:     ../checkpoints_v7/gen_409/  (replay_size=80000)
+
+================ GEN 410 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17894 samples from 400 games in 92.6s (4.3 games/s)
+  train:     batches=400  loss_win=0.1942  loss_prize=0.1735  loss_hp=0.1072  loss_policy=0.3462  (2.3s)
+  eval:      vs_mcts-raw:720 = 61.5% score  (100 games, 25.9s)
+  saved:     ../checkpoints_v7/gen_410/  (replay_size=80000)
+
+================ GEN 411 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17838 samples from 400 games in 122.6s (3.3 games/s)
+  train:     batches=400  loss_win=0.1940  loss_prize=0.1751  loss_hp=0.1078  loss_policy=0.3479  (2.5s)
+  eval:      vs_mcts-raw:720 = 59.9% score  (100 games, 26.8s)
+  saved:     ../checkpoints_v7/gen_411/  (replay_size=80000)
+
+================ GEN 412 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17905 samples from 400 games in 192.6s (2.1 games/s)
+  train:     batches=400  loss_win=0.1989  loss_prize=0.1718  loss_hp=0.1096  loss_policy=0.3478  (4.0s)
+  eval:      vs_mcts-raw:720 = 56.8% score  (100 games, 49.9s)
+  saved:     ../checkpoints_v7/gen_412/  (replay_size=80000)
+
+================ GEN 413 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18234 samples from 400 games in 137.5s (2.9 games/s)
+  train:     batches=400  loss_win=0.1983  loss_prize=0.1674  loss_hp=0.1097  loss_policy=0.3435  (2.5s)
+  eval:      vs_mcts-raw:720 = 57.8% score  (100 games, 26.3s)
+  saved:     ../checkpoints_v7/gen_413/  (replay_size=80000)
+
+================ GEN 414 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18561 samples from 400 games in 111.6s (3.6 games/s)
+  train:     batches=400  loss_win=0.1962  loss_prize=0.1677  loss_hp=0.1091  loss_policy=0.3492  (2.4s)
+  eval:      vs_mcts-raw:720 = 60.9% score  (100 games, 26.1s)
+  saved:     ../checkpoints_v7/gen_414/  (replay_size=80000)
+
+================ GEN 415 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18145 samples from 400 games in 158.0s (2.5 games/s)
+  train:     batches=400  loss_win=0.1916  loss_prize=0.1669  loss_hp=0.1065  loss_policy=0.3557  (2.4s)
+  eval:      vs_mcts-raw:720 = 48.4% score  (100 games, 25.1s)
+  saved:     ../checkpoints_v7/gen_415/  (replay_size=80000)
+
+================ GEN 416 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18531 samples from 400 games in 125.8s (3.2 games/s)
+  train:     batches=400  loss_win=0.1903  loss_prize=0.1696  loss_hp=0.1049  loss_policy=0.3461  (2.4s)
+  eval:      vs_mcts-raw:720 = 52.6% score  (100 games, 24.3s)
+  saved:     ../checkpoints_v7/gen_416/  (replay_size=80000)
+
+Done — 10 generations trained.
+Compare generations with:  ptcgp eval --a <gen_A> --b <gen_B> --games 500
+Compute device: training=Metal (Apple GPU) 🍎, inference=CPU (rayon parallel)
+Resuming from gen_416/
+  loaded gen=416  replay_size=80000  total_games=166400  wall=152.6s
+
+================ GEN 417 ================  (400 self-play games, 720 MCTS sims/move)
+Compute device: training=Metal (Apple GPU) 🍎, inference=CPU (rayon parallel)
+Resuming from gen_416/
+  loaded gen=416  replay_size=80000  total_games=166400  wall=152.6s
+
+================ GEN 417 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18233 samples from 400 games in 94.0s (4.3 games/s)
+  train:     batches=400  loss_win=0.1906  loss_prize=0.1712  loss_hp=0.1045  loss_policy=0.3361  (2.4s)
+  eval:      vs_mcts-raw:720 = 55.8% score  (250 games, 36.1s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_417/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 55.8%)
+
+================ GEN 418 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18505 samples from 400 games in 92.8s (4.3 games/s)
+  train:     batches=400  loss_win=0.1949  loss_prize=0.1772  loss_hp=0.1062  loss_policy=0.3458  (2.4s)
+  eval:      vs_mcts-raw:720 = 55.4% score  (250 games, 38.6s)
+  saved:     ../checkpoints_v7/gen_418/  (replay_size=80000)
+
+================ GEN 419 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18164 samples from 400 games in 105.7s (3.8 games/s)
+  train:     batches=400  loss_win=0.1972  loss_prize=0.1778  loss_hp=0.1064  loss_policy=0.3398  (2.4s)
+  eval:      vs_mcts-raw:720 = 57.7% score  (250 games, 42.1s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_419/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 57.7%)
+
+================ GEN 420 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18878 samples from 400 games in 110.4s (3.6 games/s)
+  train:     batches=400  loss_win=0.1984  loss_prize=0.1734  loss_hp=0.1061  loss_policy=0.3444  (3.2s)
+  eval:      vs_mcts-raw:720 = 56.0% score  (250 games, 37.0s)
+  saved:     ../checkpoints_v7/gen_420/  (replay_size=80000)
+
+================ GEN 421 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18392 samples from 400 games in 101.1s (4.0 games/s)
+  train:     batches=400  loss_win=0.1988  loss_prize=0.1719  loss_hp=0.1061  loss_policy=0.3541  (3.0s)
+  eval:      vs_mcts-raw:720 = 57.9% score  (250 games, 34.9s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_421/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 57.9%)
+
+================ GEN 422 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18588 samples from 400 games in 114.2s (3.5 games/s)
+  train:     batches=400  loss_win=0.1998  loss_prize=0.1758  loss_hp=0.1079  loss_policy=0.3484  (2.6s)
+  eval:      vs_mcts-raw:720 = 60.3% score  (250 games, 37.2s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_422/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 60.3%)
+
+================ GEN 423 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18126 samples from 400 games in 95.0s (4.2 games/s)
+  train:     batches=400  loss_win=0.1952  loss_prize=0.1747  loss_hp=0.1063  loss_policy=0.3571  (2.2s)
+  eval:      vs_mcts-raw:720 = 57.3% score  (250 games, 36.1s)
+  saved:     ../checkpoints_v7/gen_423/  (replay_size=80000)
+
+================ GEN 424 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18875 samples from 400 games in 99.2s (4.0 games/s)
+  train:     batches=400  loss_win=0.1990  loss_prize=0.1765  loss_hp=0.1071  loss_policy=0.3574  (2.4s)
+  eval:      vs_mcts-raw:720 = 56.2% score  (250 games, 35.4s)
+  saved:     ../checkpoints_v7/gen_424/  (replay_size=80000)
+
+================ GEN 425 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18461 samples from 400 games in 101.1s (4.0 games/s)
+  train:     batches=400  loss_win=0.1968  loss_prize=0.1755  loss_hp=0.1063  loss_policy=0.3530  (2.3s)
+  eval:      vs_mcts-raw:720 = 54.2% score  (250 games, 34.8s)
+  saved:     ../checkpoints_v7/gen_425/  (replay_size=80000)
+
+================ GEN 426 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18810 samples from 400 games in 95.0s (4.2 games/s)
+  train:     batches=400  loss_win=0.1969  loss_prize=0.1759  loss_hp=0.1059  loss_policy=0.3605  (2.3s)
+  eval:      vs_mcts-raw:720 = 59.1% score  (250 games, 35.5s)
+  saved:     ../checkpoints_v7/gen_426/  (replay_size=80000)
+
+Done — 10 generations trained.
+Compare generations with:  ptcgp eval --a <gen_A> --b <gen_B> --games 500
+Compute device: training=Metal (Apple GPU) 🍎, inference=CPU (rayon parallel)
+Resuming from gen_426/
+  loaded gen=426  replay_size=80000  total_games=170400  wall=132.9s
+
+================ GEN 427 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17873 samples from 400 games in 182.7s (2.2 games/s)
+  train:     batches=400  loss_win=0.1964  loss_prize=0.1694  loss_hp=0.1061  loss_policy=0.3605  (2.3s)
+  eval:      vs_mcts-raw:720 = 61.1% score  (250 games, 37.0s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_427/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 61.1%)
+
+================ GEN 428 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18560 samples from 400 games in 97.1s (4.1 games/s)
+  train:     batches=400  loss_win=0.1904  loss_prize=0.1688  loss_hp=0.1032  loss_policy=0.3610  (3.4s)
+  eval:      vs_mcts-raw:720 = 59.9% score  (250 games, 38.4s)
+  saved:     ../checkpoints_v7/gen_428/  (replay_size=80000)
+
+================ GEN 429 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18040 samples from 400 games in 87.1s (4.6 games/s)
+  train:     batches=400  loss_win=0.1900  loss_prize=0.1663  loss_hp=0.1040  loss_policy=0.3608  (2.8s)
+  eval:      vs_mcts-raw:720 = 60.9% score  (250 games, 36.5s)
+  saved:     ../checkpoints_v7/gen_429/  (replay_size=80000)
+
+================ GEN 430 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18260 samples from 400 games in 95.2s (4.2 games/s)
+  train:     batches=400  loss_win=0.1885  loss_prize=0.1696  loss_hp=0.1036  loss_policy=0.3670  (3.1s)
+  eval:      vs_mcts-raw:720 = 58.7% score  (250 games, 36.1s)
+  saved:     ../checkpoints_v7/gen_430/  (replay_size=80000)
+
+================ GEN 431 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17839 samples from 400 games in 84.7s (4.7 games/s)
+  train:     batches=400  loss_win=0.1868  loss_prize=0.1701  loss_hp=0.1041  loss_policy=0.3663  (2.8s)
+  eval:      vs_mcts-raw:720 = 63.1% score  (250 games, 35.2s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_431/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 63.1%)
+
+================ GEN 432 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18851 samples from 400 games in 91.0s (4.4 games/s)
+  train:     batches=400  loss_win=0.1935  loss_prize=0.1735  loss_hp=0.1071  loss_policy=0.3675  (2.8s)
+  eval:      vs_mcts-raw:720 = 61.7% score  (250 games, 36.1s)
+  saved:     ../checkpoints_v7/gen_432/  (replay_size=80000)
+
+================ GEN 433 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17988 samples from 400 games in 87.8s (4.6 games/s)
+  train:     batches=400  loss_win=0.1963  loss_prize=0.1734  loss_hp=0.1083  loss_policy=0.3703  (2.9s)
+  eval:      vs_mcts-raw:720 = 61.7% score  (250 games, 32.6s)
+  saved:     ../checkpoints_v7/gen_433/  (replay_size=80000)
+
+================ GEN 434 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17425 samples from 400 games in 85.8s (4.7 games/s)
+  train:     batches=400  loss_win=0.1929  loss_prize=0.1696  loss_hp=0.1066  loss_policy=0.3654  (2.9s)
+  eval:      vs_mcts-raw:720 = 61.5% score  (250 games, 34.5s)
+  saved:     ../checkpoints_v7/gen_434/  (replay_size=80000)
+
+================ GEN 435 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18448 samples from 400 games in 89.7s (4.5 games/s)
+  train:     batches=400  loss_win=0.1916  loss_prize=0.1643  loss_hp=0.1056  loss_policy=0.3695  (2.6s)
+  eval:      vs_mcts-raw:720 = 61.3% score  (250 games, 34.1s)
+  saved:     ../checkpoints_v7/gen_435/  (replay_size=80000)
+
+================ GEN 436 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18122 samples from 400 games in 89.4s (4.5 games/s)
+  train:     batches=400  loss_win=0.1914  loss_prize=0.1662  loss_hp=0.1060  loss_policy=0.3693  (2.7s)
+  eval:      vs_mcts-raw:720 = 63.7% score  (250 games, 32.6s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_436/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 63.7%)
+
+Done — 10 generations trained.
+Compare generations with:  ptcgp eval --a <gen_A> --b <gen_B> --games 500
+Compute device: training=Metal (Apple GPU) 🍎, inference=CPU (rayon parallel)
+Resuming from gen_436/
+  loaded gen=436  replay_size=80000  total_games=174400  wall=124.8s
+
+================ GEN 437 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17736 samples from 400 games in 90.8s (4.4 games/s)
+  train:     batches=400  loss_win=0.1948  loss_prize=0.1702  loss_hp=0.1074  loss_policy=0.3578  (2.7s)
+  eval:      vs_mcts-raw:720 = 64.9% score  (250 games, 34.7s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_437/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 64.9%)
+
+================ GEN 438 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18262 samples from 400 games in 96.0s (4.2 games/s)
+  train:     batches=400  loss_win=0.1880  loss_prize=0.1683  loss_hp=0.1043  loss_policy=0.3640  (2.5s)
+  eval:      vs_mcts-raw:720 = 60.3% score  (250 games, 34.2s)
+  saved:     ../checkpoints_v7/gen_438/  (replay_size=80000)
+
+================ GEN 439 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18317 samples from 400 games in 95.4s (4.2 games/s)
+  train:     batches=400  loss_win=0.1870  loss_prize=0.1674  loss_hp=0.1027  loss_policy=0.3592  (2.3s)
+  eval:      vs_mcts-raw:720 = 65.3% score  (250 games, 35.1s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_439/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 65.3%)
+
+================ GEN 440 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18536 samples from 400 games in 94.4s (4.2 games/s)
+  train:     batches=400  loss_win=0.1853  loss_prize=0.1699  loss_hp=0.1013  loss_policy=0.3747  (2.9s)
+  eval:      vs_mcts-raw:720 = 59.7% score  (250 games, 39.3s)
+  saved:     ../checkpoints_v7/gen_440/  (replay_size=80000)
+
+================ GEN 441 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18573 samples from 400 games in 94.7s (4.2 games/s)
+  train:     batches=400  loss_win=0.1860  loss_prize=0.1686  loss_hp=0.1017  loss_policy=0.3718  (2.3s)
+  eval:      vs_mcts-raw:720 = 63.3% score  (250 games, 36.1s)
+  saved:     ../checkpoints_v7/gen_441/  (replay_size=80000)
+
+================ GEN 442 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18524 samples from 400 games in 96.9s (4.1 games/s)
+  train:     batches=400  loss_win=0.1913  loss_prize=0.1719  loss_hp=0.1039  loss_policy=0.3724  (2.4s)
+  eval:      vs_mcts-raw:720 = 61.1% score  (250 games, 38.9s)
+  saved:     ../checkpoints_v7/gen_442/  (replay_size=80000)
+
+================ GEN 443 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17720 samples from 400 games in 94.4s (4.2 games/s)
+  train:     batches=400  loss_win=0.1948  loss_prize=0.1700  loss_hp=0.1055  loss_policy=0.3723  (2.3s)
+  eval:      vs_mcts-raw:720 = 66.1% score  (250 games, 36.7s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_443/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 66.1%)
+
+================ GEN 444 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 17856 samples from 400 games in 91.6s (4.4 games/s)
+  train:     batches=400  loss_win=0.1895  loss_prize=0.1697  loss_hp=0.1045  loss_policy=0.3653  (2.3s)
+  eval:      vs_mcts-raw:720 = 63.5% score  (250 games, 38.3s)
+  saved:     ../checkpoints_v7/gen_444/  (replay_size=80000)
+
+================ GEN 445 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18330 samples from 400 games in 97.0s (4.1 games/s)
+  train:     batches=400  loss_win=0.1878  loss_prize=0.1699  loss_hp=0.1032  loss_policy=0.3571  (2.8s)
+  eval:      vs_mcts-raw:720 = 68.1% score  (250 games, 36.4s)  ★ NEW BEST
+  saved:     ../checkpoints_v7/gen_445/  (replay_size=80000)
+  best:      saved to ../checkpoints_v7/best/  (vs_mcts-raw:720 68.1%)
+
+================ GEN 446 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 18796 samples from 400 games in 97.9s (4.1 games/s)
+  train:     batches=400  loss_win=0.1880  loss_prize=0.1692  loss_hp=0.1032  loss_policy=0.3666  (3.0s)
+  eval:      vs_mcts-raw:720 = 64.9% score  (250 games, 38.0s)
+  saved:     ../checkpoints_v7/gen_446/  (replay_size=80000)
+
+Done — 10 generations trained.
+Compare generations with:  ptcgp eval --a <gen_A> --b <gen_B> --games 500

@@ -33,6 +33,11 @@ pub struct Meta {
     pub games_played: u64,
     pub wall_time_s: f64,
     pub notes: String,
+    /// Recommended eval spec fragment: "sims:hybrid_weight:rollout_depth"
+    /// e.g. "240:0.5:25". Written by the trainer so `--agent ai` can
+    /// reconstruct the exact eval parameters the model was trained with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eval_spec: Option<String>,
 }
 
 impl Meta {
@@ -43,6 +48,7 @@ impl Meta {
             games_played: 0,
             wall_time_s: 0.0,
             notes: String::new(),
+            eval_spec: None,
         }
     }
 }

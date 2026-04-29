@@ -32,14 +32,15 @@ use crate::engine::legal_actions::{
     get_legal_actions, get_legal_promotions, get_legal_setup_bench_placements,
     get_legal_setup_placements,
 };
-use crate::engine::{ko, mutations, turn};
+use crate::engine::{ko, mutations, setup, turn};
 use crate::state::GameState;
-use crate::types::{ActionKind, GamePhase};
+use crate::types::{ActionKind, CardKind, GamePhase, Stage};
+use crate::constants::POINTS_TO_WIN;
 
 use super::card_embed::{build_embed_cache, CARD_EMBED_DIM};
 use super::determinize::determinize_for;
 use super::features::{encode_into, encode_with_cache, FEATURE_DIM};
-use super::net::{InferenceNet, ValueNet};
+use super::net::{InferenceNet, ValueNet, MAX_POLICY_SIZE};
 
 // Thread-local scratch buffer for zero-allocation feature encoding in the
 // MCTS hot path. Each rayon worker gets its own buffer (thread_local is
@@ -78,10 +79,28 @@ pub enum LeafValue {
 #[derive(Clone, Debug)]
 pub struct MctsConfig {
     /// Total number of MCTS simulations per `select_action` call.
+    /// When `determinizations > 1`, this budget is split evenly across all
+    /// determinizations (e.g. 240 sims with 4 determinizations = 60 each).
     pub total_sims: usize,
-    /// UCB1 exploration constant. Used in the bonus term
-    /// `c * sqrt(ln(N) / n)` for visited edges.
-    /// ~1.4 is the theoretical default; increase for more exploration.
+    /// Number of independent determinizations (PIMC).
+    ///
+    /// Each determinization samples a fresh opponent hand from the pool of
+    /// unknown cards and builds a separate MCTS tree. After all trees are
+    /// searched, visit counts are *summed* across determinizations to produce
+    /// the final action distribution.
+    ///
+    /// K=1 is the Wave 1 single-determinization behaviour. K=4 is a strong
+    /// default that handles hidden information much better at the same total
+    /// sim budget (each tree gets `total_sims / determinizations` sims).
+    ///
+    /// Reference: "Information Set Monte Carlo Tree Search" (Cowling et al.)
+    pub determinizations: usize,
+    /// P-UCT exploration constant (AlphaZero-style).
+    ///
+    /// Used in `c_puct * P(s,a) * sqrt(N_parent) / (1 + N(s,a))`.
+    /// Unlike UCB1, the prior P(s,a) continuously scales the bonus, so
+    /// high-prior actions (KO attacks, evolves) receive proportionally more
+    /// exploration budget throughout the search. ~1.4 is the standard default.
     pub c_puct: f64,
     /// Action-selection temperature. 0 = argmax over visit counts (strongest
     /// at play time). >0 = sample proportional to visits^(1/T) (used during
@@ -96,6 +115,18 @@ pub struct MctsConfig {
     pub delegate_trivial: bool,
     /// If true, defer to `HeuristicAgent` during Setup + Promotion phases.
     pub delegate_setup: bool,
+    /// Use the neural network's policy logits as P-UCT priors in `new_node()`.
+    ///
+    /// When `false` (the default), heuristic domain-knowledge priors are used
+    /// regardless of whether an inference net is attached. The policy head is
+    /// still *trained* on MCTS visit distributions when false — it just isn't
+    /// *used* for search yet.
+    ///
+    /// Set to `true` once the policy head is well-calibrated (typically after
+    /// 20-30 gens) to use informed network priors for P-UCT selection. Using
+    /// random network priors before training degrades search quality because
+    /// with only 240 sims, bad priors significantly distort visit distributions.
+    pub use_network_priors: bool,
     /// Inject Dirichlet noise into root edge priors during self-play.
     /// Disabled at eval time so the agent plays deterministically.
     pub use_dirichlet: bool,
@@ -106,21 +137,46 @@ pub struct MctsConfig {
     /// Fraction of the root prior that comes from Dirichlet noise.
     /// (1 - frac) comes from the uniform prior. AlphaZero default: 0.25.
     pub dirichlet_frac: f32,
+    /// Temperature for sharpening MCTS visit-count distributions before using
+    /// them as policy training targets.
+    ///
+    /// `policy_target[a] ∝ N(a)^(1/τ)` — lower τ = sharper / more peaked.
+    ///
+    /// With 240 sims the raw visit distribution is only mildly concentrated
+    /// (~60% on the best action), giving a CE target whose entropy is close to
+    /// `log(n_legal)`. This leaves almost no gradient for the policy head to
+    /// climb. Sharpening amplifies the signal:
+    ///
+    /// | τ    | effective power | typical best-action mass (4 actions) |
+    /// |------|-----------------|--------------------------------------|
+    /// | 1.0  | raw visits      | ~60%   (original; weak gradient)     |
+    /// | 0.5  | visits²         | ~90%   (recommended)                 |
+    /// | 0.25 | visits⁴         | ~99%   (aggressive)                  |
+    ///
+    /// `τ = 0.5` (squaring visits) is the recommended default. It gives a
+    /// clear best-action signal without collapsing to hard argmax, which would
+    /// ignore the relative merits of second-best moves.
+    ///
+    /// Set to 1.0 to restore the original unsharpened behaviour.
+    pub policy_target_tau: f32,
 }
 
 impl Default for MctsConfig {
     fn default() -> Self {
         Self {
             total_sims: 500,
+            determinizations: 1,
             c_puct: 1.4,
             temperature: 0.0,
             leaf_value_source: LeafValue::RandomRollout,
             rollout_depth_cap: 200,
             delegate_trivial: true,
             delegate_setup: true,
+            use_network_priors: false,
             use_dirichlet: false,
             dirichlet_alpha: 0.3,
             dirichlet_frac: 0.25,
+            policy_target_tau: 0.5,
         }
     }
 }
@@ -154,6 +210,15 @@ pub struct MctsAgent {
     /// `last_root_q()` converts to `None` so callers can distinguish "no
     /// search ran" from a genuine near-zero Q value.
     last_root_q_bits: AtomicU32,
+    /// Stores the policy target (MCTS visit-count distribution over
+    /// [`MAX_POLICY_SIZE`] action slots) and legal mask from the most recent
+    /// `select_action` call. Cleared to `None` at the top of each call so
+    /// fast-path returns leave `None` (no search ran, no useful policy signal).
+    ///
+    /// [`RecordingAgent`](crate::ml::selfplay::RecordingAgent) reads this via
+    /// the [`PolicySource`] trait to build AlphaZero-style policy supervision
+    /// targets for the training samples.
+    last_policy_data: std::sync::Mutex<Option<([f32; MAX_POLICY_SIZE], [f32; MAX_POLICY_SIZE])>>,
 }
 
 impl MctsAgent {
@@ -167,6 +232,7 @@ impl MctsAgent {
             embed_cache,
             inference_net: None,
             last_root_q_bits: AtomicU32::new(f32::NAN.to_bits()),
+            last_policy_data: std::sync::Mutex::new(None),
         }
     }
 
@@ -206,18 +272,34 @@ impl MctsAgent {
 
 impl Agent for MctsAgent {
     fn select_action(&self, state: &GameState, db: &CardDb, player_idx: usize) -> Action {
-        // Reset Q sentinel so fast-path returns are distinguishable from a
-        // genuine Q=0 after a full search. NaN → last_root_q() returns None.
+        // Reset sentinels so fast-path returns are distinguishable from genuine
+        // search results. NaN Q → last_root_q() returns None. None policy →
+        // last_policy_target() returns None (no useful supervision signal).
         self.last_root_q_bits.store(f32::NAN.to_bits(), Ordering::Relaxed);
+        if let Ok(mut pd) = self.last_policy_data.lock() {
+            *pd = None;
+        }
 
-        // Fast path 1: shallow phases → heuristic. Setup and bench-promotion
-        // choices are simple and searching them wastes budget.
+        // Fast path 1a: bench-filling sub-phase of Setup → heuristic.
+        // When active is already chosen, bench placement is trivially greedy
+        // (place everything you have). Not a strategic decision worth searching.
+        //
+        // Fast path 1b: AwaitingBenchPromotion → heuristic.
+        // After a KO, the player must promote a benched Pokémon. The choice
+        // matters but promotion options are usually limited (1-3 bench slots),
+        // and the right choice is almost always "the strongest Pokémon" which
+        // the heuristic handles correctly.
+        //
+        // NOTE: Setup active-selection (no active yet) is intentionally NOT
+        // fast-pathed here. Choosing which Pokémon leads is strategically
+        // important — the wrong active choice (a fragile basic when you hold
+        // an EX) can lose the game. MCTS will search it with the remaining
+        // budget below.
         if self.config.delegate_setup {
-            match state.phase {
-                GamePhase::Setup | GamePhase::AwaitingBenchPromotion => {
-                    return HeuristicAgent.select_action(state, db, player_idx);
-                }
-                _ => {}
+            let is_bench_fill = state.phase == GamePhase::Setup
+                && state.players[player_idx].active.is_some();
+            if is_bench_fill || state.phase == GamePhase::AwaitingBenchPromotion {
+                return HeuristicAgent.select_action(state, db, player_idx);
             }
         }
 
@@ -229,6 +311,19 @@ impl Agent for MctsAgent {
         // Fast path 2: only one legal action → return directly.
         if self.config.delegate_trivial && legal.len() == 1 {
             return legal.into_iter().next().unwrap();
+        }
+
+        // Fast path 3: instant-win attack. If any attack in the legal set
+        // guarantees a KO that wins the game this turn, take it immediately —
+        // no search needed. Conditions (conservative):
+        //   a) my_points + opp_active.ko_points >= POINTS_TO_WIN
+        //   b) attack.damage + my_damage_bonus >= opp_active.current_hp
+        //      (we use the raw base damage only, no weakness, no coin flips —
+        //       so this only fires when the kill is certain, not hopeful)
+        if state.phase == GamePhase::Main {
+            if let Some(win_attack) = find_winning_attack(&legal, state, &self.db) {
+                return win_attack;
+            }
         }
 
         // Per-call seed: mixes base seed with a state-derived stir so that
@@ -247,54 +342,156 @@ impl Agent for MctsAgent {
                     .fold(0u64, |a, c| a.wrapping_mul(31).wrapping_add(c)),
             );
 
-        // Single determinization per MCTS call (Wave 1 simplification).
-        let search_state = determinize_for(state, player_idx, per_call_seed);
+        // PIMC: run K determinizations and aggregate visit counts.
+        //
+        // Each determinization samples a fresh opponent hand so the search
+        // averages over hidden-information uncertainty rather than committing
+        // to a single guess. For K=1 this is identical to the old single-
+        // determinization behaviour (zero overhead).
+        //
+        // Root legal actions are the SAME across all determinizations because
+        // they depend only on the acting player's own board/hand, not the
+        // opponent's hidden cards. We therefore aggregate visit counts by
+        // position index across all K root nodes.
+        let n_det = self.config.determinizations.max(1);
+        let sims_per_det = (self.config.total_sims + n_det - 1) / n_det;
 
-        // Build and populate the tree.
-        let mut tree = Tree::new(
-            player_idx,
-            self.config.clone(),
-            per_call_seed,
-            self.inference_net.as_deref(),
-            self.net.as_deref(),
-            self.embed_cache.as_slice(),
-        );
-        let root = tree.new_node(&search_state, db);
-        tree.root = root;
+        // Aggregated visit counts per root action (index → total visits).
+        let n_actions = legal.len();
+        let mut total_visits: Vec<u32> = vec![0u32; n_actions];
+        let mut total_q: f64 = 0.0;
 
-        // Inject Dirichlet noise into root edge priors (training only).
-        // This ensures different games explore different root actions first,
-        // preventing the policy from collapsing to deterministic play.
-        if self.config.use_dirichlet {
-            let n = tree.nodes[root].children.len();
-            if n > 1 {
-                let noise = sample_dirichlet(
-                    self.config.dirichlet_alpha,
-                    n,
-                    &mut SmallRng::seed_from_u64(per_call_seed.wrapping_add(0xD1D1_D1D1)),
-                );
-                let frac = self.config.dirichlet_frac;
-                let uniform = 1.0 / n as f32;
-                for (edge, &eta) in tree.nodes[root].children.iter_mut().zip(noise.iter()) {
-                    edge.prior = (1.0 - frac) * uniform + frac * eta;
+        for k in 0..n_det {
+            // Different seed per determinization → different opponent hand samples.
+            let det_seed = per_call_seed
+                .wrapping_add(k as u64)
+                .wrapping_mul(0x9E37_79B9_7F4A_7C15_u64)
+                .wrapping_add(0x6C62_272E_07BB_0142_u64);
+            let search_state = determinize_for(state, player_idx, det_seed);
+
+            let mut tree = Tree::new(
+                player_idx,
+                self.config.clone(),
+                det_seed,
+                self.inference_net.as_deref(),
+                self.net.as_deref(),
+                self.embed_cache.as_slice(),
+            );
+            let root = tree.new_node(&search_state, db);
+            tree.root = root;
+
+            // Inject Dirichlet noise into root edge priors (training only).
+            // Applied per-determinization so each tree explores independently.
+            if self.config.use_dirichlet {
+                let n = tree.nodes[root].children.len();
+                if n > 1 {
+                    let noise = sample_dirichlet(
+                        self.config.dirichlet_alpha,
+                        n,
+                        &mut SmallRng::seed_from_u64(det_seed.wrapping_add(0xD1D1_D1D1)),
+                    );
+                    let frac = self.config.dirichlet_frac;
+                    for (edge, &eta) in tree.nodes[root].children.iter_mut().zip(noise.iter()) {
+                        edge.prior = (1.0 - frac) * edge.prior + frac * eta;
+                    }
+                }
+            }
+
+            for i in 0..sims_per_det {
+                let mut sim_state = search_state.clone();
+                // Each sim gets a fresh RNG so coin flips / energy gen aren't lock-stepped.
+                sim_state.rng = SmallRng::seed_from_u64(det_seed.wrapping_add(i as u64));
+                tree.simulate(root, &mut sim_state, db);
+            }
+
+            // Accumulate visit counts from this determinization's root.
+            for (j, edge) in tree.nodes[root].children.iter().enumerate() {
+                if j < n_actions {
+                    total_visits[j] += edge.visits;
+                }
+            }
+            total_q += tree.root_q() as f64;
+        }
+
+        // Store averaged root Q across all determinizations.
+        let avg_q = (total_q / n_det as f64).clamp(-1.0, 1.0) as f32;
+        self.last_root_q_bits.store(avg_q.to_bits(), Ordering::Relaxed);
+
+        // Compute and store the AlphaZero-style policy supervision target.
+        // This is the normalized visit-count distribution over MAX_POLICY_SIZE
+        // canonical action slots. RecordingAgent reads it via PolicySource to
+        // attach dense per-move supervision to each training sample.
+        //
+        // Temperature sharpening: `policy_target[a] ∝ N(a)^(1/τ)`.
+        // With τ=0.5 (default) we square visit counts before normalizing,
+        // amplifying the best-action signal from ~60% to ~90% for a typical
+        // 4-action, 240-sim tree.  This gives the policy head a much stronger
+        // gradient than raw visit fractions, which are near-uniform at low
+        // sim counts.  τ=1.0 restores original unsharpened behaviour.
+        //
+        // Must happen BEFORE `legal.into_iter()` consumes the vector.
+        {
+            let total_v: u32 = total_visits.iter().sum();
+            if total_v > 0 {
+                let tau = self.config.policy_target_tau.max(1e-4);
+                let inv_tau = 1.0 / tau;
+                // Apply temperature: sharpened[i] = visits[i]^(1/τ)
+                let sharpened: Vec<f32> = total_visits
+                    .iter()
+                    .map(|&v| (v as f32).powf(inv_tau))
+                    .collect();
+                let sum_sharp: f32 = sharpened.iter().sum();
+                if sum_sharp > 0.0 {
+                    let mut policy_target = [0.0f32; MAX_POLICY_SIZE];
+                    let mut policy_legal  = [0.0f32; MAX_POLICY_SIZE];
+                    for (j, action) in legal.iter().enumerate() {
+                        if j < sharpened.len() {
+                            let idx = action_to_policy_idx(action);
+                            policy_legal[idx] = 1.0;
+                            policy_target[idx] += sharpened[j] / sum_sharp;
+                        }
+                    }
+                    if let Ok(mut pd) = self.last_policy_data.lock() {
+                        *pd = Some((policy_target, policy_legal));
+                    }
                 }
             }
         }
 
-        for i in 0..self.config.total_sims {
-            let mut sim_state = search_state.clone();
-            // Each sim gets a fresh RNG so coin flips / energy gen aren't lock-stepped.
-            sim_state.rng = SmallRng::seed_from_u64(per_call_seed.wrapping_add(i as u64));
-            tree.simulate(root, &mut sim_state, db);
+        // Pick action from aggregated visit counts using temperature policy.
+        let t = self.config.temperature;
+        if t < 1e-6 {
+            // Argmax: deterministic play.
+            let best_idx = total_visits
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, &v)| v)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            legal.into_iter().nth(best_idx).unwrap_or(Action::end_turn())
+        } else {
+            // Temperature sampling: proportional to visits^(1/T).
+            let inv_t = 1.0 / t as f64;
+            let weights: Vec<f64> = total_visits
+                .iter()
+                .map(|&v| (v as f64).powf(inv_t))
+                .collect();
+            let total_w: f64 = weights.iter().sum();
+            if total_w <= 0.0 {
+                return legal.into_iter().next().unwrap_or(Action::end_turn());
+            }
+            let mut rng = SmallRng::seed_from_u64(per_call_seed.wrapping_add(0xABCD_1234_5678_u64));
+            let mut r: f64 = rng.gen_range(0.0..total_w);
+            let mut chosen = Action::end_turn();
+            for (action, &w) in legal.into_iter().zip(weights.iter()) {
+                r -= w;
+                chosen = action;
+                if r <= 0.0 {
+                    break;
+                }
+            }
+            chosen
         }
-
-        // Capture root Q before returning the best action. Stored in an AtomicU32
-        // so RecordingAgent can read it after calling select_action() without any
-        // locking. NaN sentinel (set at top of this call) is overwritten here.
-        let root_q = tree.root_q();
-        self.last_root_q_bits.store(root_q.to_bits(), Ordering::Relaxed);
-
-        tree.best_action(root)
     }
 }
 
@@ -359,7 +556,27 @@ impl<'a> Tree<'a> {
         }
     }
 
-    /// Create a node for the given state. Populates its edges with legal actions.
+    /// Create a node for the given state. Populates its edges with legal actions
+    /// and assigns heuristic prior probabilities (normalized to sum to 1.0).
+    ///
+    /// # Heuristic priors
+    ///
+    /// During Main phase, actions are scored by domain knowledge:
+    /// - Attack-for-KO:       3.5 × (end the game immediately)
+    /// - High-damage attack:  2.0 × (attack does ≥ half opp HP)
+    /// - Evolve:              2.5 × (always a strong progression signal)
+    /// - Generic attack:      1.5 × (attacking beats not attacking)
+    /// - Attach to active:    1.5 × (power up the fighting Pokémon)
+    /// - UseAbility:          1.2 ×
+    /// - Attach to bench:     1.1 ×
+    /// - PlayCard / Promote:  1.0 × (neutral)
+    /// - Retreat:             0.7 ×
+    /// - EndTurn:             0.4 × (last resort)
+    ///
+    /// These scores are normalized so they sum to 1.0 before storage,
+    /// matching the UCB P-exploration term convention. During Setup /
+    /// AwaitingBenchPromotion phases (which delegate to HeuristicAgent anyway)
+    /// uniform priors are used instead.
     fn new_node(&mut self, state: &GameState, db: &CardDb) -> usize {
         let pi = whose_turn(state);
         let legal = legal_for_phase(state, db, pi);
@@ -372,15 +589,71 @@ impl<'a> Tree<'a> {
             0.0
         };
         let n = legal.len();
-        let uniform_prior = if n > 0 { 1.0 / n as f32 } else { 1.0 };
+
+        // Compute normalized priors for each legal action.
+        //
+        // Priority:
+        //  1. Network policy logits — only when `config.use_network_priors` is
+        //     true AND an InferenceNet is attached. Off by default: using random
+        //     network priors early in training degrades search quality because
+        //     at 240 sims the priors still strongly influence UCB selection.
+        //     Enable once the policy head is calibrated (~20-30 gens).
+        //  2. Heuristic scores — stable domain-knowledge priors. Always used
+        //     when (1) is disabled.
+        //  3. Uniform — non-Main phases delegated to HeuristicAgent anyway.
+        let priors: Vec<f32> = if n == 0 {
+            Vec::new()
+        } else if state.phase != GamePhase::Main {
+            vec![1.0 / n as f32; n]
+        } else if self.config.use_network_priors {
+            if let Some(inet) = self.inet {
+                // Network policy priors: single inference call per new node.
+                // Returns a masked-softmax distribution over legal action slots.
+                let pidxs: Vec<usize> = legal.iter().map(|a| action_to_policy_idx(a)).collect();
+                FEATURE_BUF.with(|cell| {
+                    let mut buf = cell.borrow_mut();
+                    encode_into(state, db, pi, self.embed_cache, &mut *buf);
+                    let (_, logits) = inet.win_and_policy(&*buf);
+                    InferenceNet::softmax_masked(&logits, &pidxs)
+                })
+            } else {
+                // use_network_priors=true but no inet attached — fall back to heuristic.
+                let mut scores: Vec<f32> = legal
+                    .iter()
+                    .map(|a| action_prior_score(a, state, db, pi))
+                    .collect();
+                let total: f32 = scores.iter().sum();
+                let inv = if total > 0.0 { 1.0 / total } else { 1.0 / n as f32 };
+                for s in &mut scores { *s *= inv; }
+                scores
+            }
+        } else {
+            // Heuristic priors (default): stable, domain-informed, no feedback instability.
+            let mut scores: Vec<f32> = legal
+                .iter()
+                .map(|a| action_prior_score(a, state, db, pi))
+                .collect();
+            let total: f32 = scores.iter().sum();
+            let inv = if total > 0.0 {
+                1.0 / total
+            } else {
+                1.0 / n as f32
+            };
+            for s in &mut scores {
+                *s *= inv;
+            }
+            scores
+        };
+
         let children: Vec<Edge> = legal
             .into_iter()
-            .map(|a| Edge {
+            .zip(priors)
+            .map(|(a, p)| Edge {
                 action: a,
                 child: None,
                 visits: 0,
                 value_sum: 0.0,
-                prior: uniform_prior,
+                prior: p,
             })
             .collect();
         self.nodes.push(Node {
@@ -473,9 +746,8 @@ impl<'a> Tree<'a> {
     fn ucb_select(&self, node_idx: usize) -> usize {
         let node = &self.nodes[node_idx];
         let parent_visits = node.visits.max(1) as f64;
-        let log_parent = parent_visits.ln().max(0.0);
+        let sqrt_parent = parent_visits.sqrt();
         let is_root_player = node.player_to_move as usize == self.root_player;
-        let is_root = node_idx == self.root;
 
         let mut best_idx = 0usize;
         let mut best_score = f64::NEG_INFINITY;
@@ -483,25 +755,25 @@ impl<'a> Tree<'a> {
         for (i, edge) in node.children.iter().enumerate() {
             let score = if edge.visits == 0 {
                 // Unvisited → must be explored before any visited edge.
-                // At the root, use the Dirichlet-noised prior to randomise
-                // which unvisited edge is tried first: higher prior ⟹
-                // explored earlier. This gives each game a different root
-                // exploration order without changing the UCB formula for
-                // visited edges, preserving the proven UCB1 behaviour.
-                // At non-root nodes we keep the original deterministic
-                // index-based tiebreak (prior is uniform there, noise-free).
-                if is_root {
-                    f64::INFINITY + edge.prior as f64 * 1e-3
-                } else {
-                    f64::INFINITY - (i as f64) * 1e-12
-                }
+                // Tiebreak by prior: higher-prior actions (KO attacks, evolves)
+                // are explored first, matching the P-UCT formula's intent.
+                f64::INFINITY + edge.prior as f64 * 1e-3
             } else {
                 let mean = edge.value_sum / edge.visits as f64;
                 // Flip sign at opponent nodes so UCB always maximises for
                 // the player currently choosing.
                 let q = if is_root_player { mean } else { -mean };
-                // Standard UCB1 exploration term.
-                let u = self.config.c_puct * (log_parent / edge.visits as f64).sqrt();
+                // AlphaZero P-UCT: prior-weighted exploration bonus.
+                //   U(s,a) = c_puct * P(s,a) * sqrt(N_parent) / (1 + N(s,a))
+                //
+                // Unlike UCB1 (which ignores the prior after first visit),
+                // P-UCT continuously weights exploration by P(s,a). This means
+                // KO attacks and evolves keep getting proportionally more budget
+                // throughout the search, not just when unvisited.
+                let u = self.config.c_puct
+                    * edge.prior as f64
+                    * sqrt_parent
+                    / (1.0 + edge.visits as f64);
                 q + u
             };
             if score > best_score {
@@ -516,6 +788,16 @@ impl<'a> Tree<'a> {
     /// (capped) terminal, call the learned value net directly, or blend
     /// the two. Returns a value in [-1, +1] from the root player's POV.
     fn rollout(&mut self, state: &mut GameState, db: &CardDb) -> f64 {
+        // If the simulation reached (or started from) Setup phase, fast-forward
+        // to Main phase using the heuristic before rolling out. This handles the
+        // case where MCTS is called during active selection at game start.
+        if state.phase == GamePhase::Setup {
+            advance_through_setup(state, db);
+        }
+        if state.winner.is_some() || state.phase == GamePhase::GameOver {
+            return value_for_root(state, self.root_player);
+        }
+
         // Pure value-net leaf eval: fast, no rollout.
         if matches!(self.config.leaf_value_source, LeafValue::ValueNet) {
             return self.net_value(state, db);
@@ -667,44 +949,6 @@ impl<'a> Tree<'a> {
         (root.value_sum / root.visits as f64).clamp(-1.0, 1.0) as f32
     }
 
-    /// At the root: pick the action with highest visit count (temperature=0)
-    /// or sample proportional to `visits^(1/T)` (temperature>0).
-    fn best_action(&mut self, root_idx: usize) -> Action {
-        let t = self.config.temperature;
-        let node = &self.nodes[root_idx];
-        if node.children.is_empty() {
-            return Action::end_turn();
-        }
-        if t < 1e-6 {
-            let best = node
-                .children
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, e)| e.visits)
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-            return node.children[best].action.clone();
-        }
-        // Temperature sampling.
-        let inv_t = 1.0 / t as f64;
-        let weights: Vec<f64> = node
-            .children
-            .iter()
-            .map(|e| (e.visits as f64).powf(inv_t))
-            .collect();
-        let total: f64 = weights.iter().sum();
-        if total <= 0.0 {
-            return node.children[0].action.clone();
-        }
-        let mut r: f64 = self.rng.gen_range(0.0..total);
-        for (i, w) in weights.iter().enumerate() {
-            r -= w;
-            if r <= 0.0 {
-                return node.children[i].action.clone();
-            }
-        }
-        node.children.last().unwrap().action.clone()
-    }
 }
 
 // ------------------------------------------------------------------ //
@@ -740,8 +984,198 @@ impl RootQSource for MctsAgent {
 }
 
 // ------------------------------------------------------------------ //
+// PolicySource — AlphaZero-style visit-count supervision signal
+// ------------------------------------------------------------------ //
+
+/// Provide the MCTS visit-count policy distribution from the most recent
+/// [`MctsAgent::select_action`] call.
+///
+/// Returns `(policy_target, policy_legal)`:
+/// - `policy_target[i]` is the fraction of total visits that went to canonical
+///   action slot `i`. Sums to 1.0 over legal slots.
+/// - `policy_legal[i]` is 1.0 if slot `i` was a legal action in this state,
+///   0.0 otherwise.
+///
+/// [`RecordingAgent`](crate::ml::selfplay::RecordingAgent) queries this after
+/// each `select_action` call and attaches the data to the training sample so
+/// the policy head can be trained with cross-entropy against this distribution.
+pub trait PolicySource: Send + Sync {
+    /// The visit-count distribution and legal mask, or `None` when no full
+    /// MCTS search ran (fast-path moves: setup phase, single legal action).
+    fn last_policy_target(&self) -> Option<([f32; MAX_POLICY_SIZE], [f32; MAX_POLICY_SIZE])>;
+}
+
+impl PolicySource for MctsAgent {
+    fn last_policy_target(&self) -> Option<([f32; MAX_POLICY_SIZE], [f32; MAX_POLICY_SIZE])> {
+        self.last_policy_data.lock().ok().and_then(|g| *g)
+    }
+}
+
+// ------------------------------------------------------------------ //
 // Helpers
 // ------------------------------------------------------------------ //
+
+/// Check whether any legal attack action is a guaranteed game-winning KO.
+///
+/// Returns the first attack action that:
+/// 1. KOs the opponent's active Pokémon (base damage + my bonus ≥ opp HP).
+///    We use only guaranteed damage (no coin-flip bonus, no weakness) so the
+///    fast path only fires when the kill is certain.
+/// 2. The resulting KO points push our total to ≥ POINTS_TO_WIN.
+///
+/// When both conditions hold, there is no strategic decision left — just
+/// take the kill. Skipping the full MCTS search here saves the entire sim
+/// budget (e.g. 240 simulations × tree overhead) with zero quality loss.
+fn find_winning_attack(actions: &[Action], state: &GameState, db: &CardDb) -> Option<Action> {
+    let pi = state.current_player;
+    let my_points = state.players[pi].points;
+    let Some(my_active) = state.players[pi].active.as_ref() else {
+        return None;
+    };
+    let Some(opp_active) = state.players[1 - pi].active.as_ref() else {
+        return None;
+    };
+    let bonus = state.players[pi].attack_damage_bonus as i16
+        + my_active.attack_bonus_next_turn_self as i16;
+    let opp_ko_points = db.get_by_idx(opp_active.card_idx).ko_points;
+
+    // Only fast-path when this KO would actually win.
+    if (my_points + opp_ko_points) < POINTS_TO_WIN {
+        return None;
+    }
+
+    for action in actions {
+        if action.kind != ActionKind::Attack {
+            continue;
+        }
+        let Some(attack_idx) = action.attack_index else {
+            continue;
+        };
+        let my_card = db.get_by_idx(my_active.card_idx);
+        let Some(attack) = my_card.attacks.get(attack_idx) else {
+            continue;
+        };
+        let guaranteed_dmg = attack.damage + bonus;
+        // Only take the fast path when the KO is certain (no coin-flip luck
+        // needed). Adding weakness would risk over-committing when the
+        // opponent doesn't actually have the weakness.
+        if guaranteed_dmg > 0 && guaranteed_dmg >= opp_active.current_hp {
+            return Some(action.clone());
+        }
+    }
+    None
+}
+
+/// Map any legal [`Action`] to a canonical policy slot index in
+/// `[0, MAX_POLICY_SIZE)`.
+///
+/// The mapping is deterministic and stable across game states. All PTCGP
+/// action kinds fit within 32 slots (MAX_POLICY_SIZE), leaving slots 27-31
+/// as reserved expansion space:
+///
+/// | Slots  | Action kind                                     |
+/// |--------|-------------------------------------------------|
+/// | 0      | EndTurn                                         |
+/// | 1–2    | Attack[0], Attack[1]                            |
+/// | 3–5    | Retreat → bench[0], bench[1], bench[2]          |
+/// | 6–8    | Promote → bench[0], bench[1], bench[2]          |
+/// | 9–12   | AttachEnergy → active, bench[0], bench[1], bench[2] |
+/// | 13–16  | UseAbility  → active, bench[0], bench[1], bench[2] |
+/// | 17–26  | PlayCard / Evolve from hand[0..9]               |
+/// | 27–31  | (reserved)                                      |
+pub fn action_to_policy_idx(action: &Action) -> usize {
+    // Bench-only target: Retreat/Promote always reference bench slot 0–2.
+    let bench_slot = |t: Option<crate::actions::SlotRef>| -> usize {
+        t.map(|s| (s.slot.max(0) as usize).min(2)).unwrap_or(0)
+    };
+    // Active-or-bench target: active (slot=-1) → 0, bench[0] → 1, bench[1] → 2, bench[2] → 3.
+    let active_bench_slot = |t: Option<crate::actions::SlotRef>| -> usize {
+        t.map(|s| {
+            let idx = (s.slot as i16 + 1).max(0) as usize;
+            idx.min(3)
+        }).unwrap_or(0)
+    };
+    match action.kind {
+        ActionKind::EndTurn     => 0,
+        ActionKind::Attack      => 1 + action.attack_index.unwrap_or(0).min(1),
+        ActionKind::Retreat     => 3 + bench_slot(action.target),
+        ActionKind::Promote     => 6 + bench_slot(action.target),
+        ActionKind::AttachEnergy => 9 + active_bench_slot(action.target),
+        ActionKind::UseAbility  => 13 + active_bench_slot(action.target),
+        ActionKind::PlayCard | ActionKind::Evolve => {
+            // Slots 17–26 cover hand positions 0–9.
+            // PTCGP has no hand limit, but hands exceeding 9 cards are rare
+            // in practice. Cards at index ≥10 collapse to slot 26, which
+            // corrupts the policy target for those positions.
+            // TODO: extend MAX_POLICY_SIZE when a larger net is trained.
+            debug_assert!(
+                action.hand_index.unwrap_or(0) <= 9,
+                "hand_index {} overflows policy slots (max 9)",
+                action.hand_index.unwrap_or(0)
+            );
+            17 + action.hand_index.unwrap_or(0).min(9)
+        }
+    }
+}
+
+/// Domain-informed prior score for a single legal action.
+///
+/// Scores are **unnormalized** — `new_node` normalizes them to sum to 1.0.
+/// The goal is not to be perfect, but to focus the MCTS budget away from
+/// obviously-bad actions (EndTurn when a KO is available) toward high-value
+/// ones (KO attacks, evolutions).
+///
+/// Called once per legal action during node expansion (the cold path, not
+/// the UCB selection loop), so a small amount of state inspection is fine.
+fn action_prior_score(action: &Action, state: &GameState, db: &CardDb, pi: usize) -> f32 {
+    match action.kind {
+        ActionKind::Attack => {
+            let Some(attack_idx) = action.attack_index else {
+                return 1.0;
+            };
+            let Some(my_active) = state.players[pi].active.as_ref() else {
+                return 1.0;
+            };
+            let my_card = db.get_by_idx(my_active.card_idx);
+            let Some(attack) = my_card.attacks.get(attack_idx) else {
+                return 1.0;
+            };
+            let bonus = state.players[pi].attack_damage_bonus as i16
+                + my_active.attack_bonus_next_turn_self as i16;
+            let base_dmg = attack.damage + bonus;
+            if base_dmg <= 0 {
+                // Zero-damage attack (pure-effect move): treat as neutral
+                return 1.0;
+            }
+            if let Some(opp_active) = state.players[1 - pi].active.as_ref() {
+                // Be generous: include +20 for potential weakness bonus so we
+                // don't suppress attacks that are close to a KO.
+                let effective_dmg = base_dmg + 20;
+                if effective_dmg >= opp_active.current_hp {
+                    return 3.5; // Can KO the opponent's active Pokémon
+                }
+                if base_dmg * 2 >= opp_active.current_hp {
+                    return 2.0; // High-damage (≥ half of opponent's remaining HP)
+                }
+            }
+            1.5 // Generic damaging attack
+        }
+        ActionKind::Evolve => 2.5,
+        ActionKind::AttachEnergy => {
+            // Attaching to the active Pokémon charges the attacker now;
+            // attaching to a benched Pokémon is future setup.
+            match action.target {
+                Some(t) if t.is_active() => 1.5,
+                _ => 1.1,
+            }
+        }
+        ActionKind::UseAbility => 1.2,
+        ActionKind::PlayCard => 1.0, // trainer, item, or basic to bench
+        ActionKind::Retreat => 0.7,
+        ActionKind::EndTurn => 0.4,
+        ActionKind::Promote => 1.0, // forced after KO — neutral
+    }
+}
 
 // ------------------------------------------------------------------ //
 // Dirichlet noise
@@ -808,9 +1242,90 @@ fn sample_gamma(shape: f32, rng: &mut SmallRng) -> f32 {
     }
 }
 
-/// Legal actions for whatever phase the state is in.
+/// Advance a game state that is still in `GamePhase::Setup` through to
+/// `GamePhase::Main` using the HeuristicAgent for all remaining decisions.
+///
+/// Called by MCTS rollouts that start from (or land in) a Setup state. The
+/// MCTS root decision (which Pokémon to place as active) has already been
+/// reflected in the state by the time `rollout` runs — this function
+/// completes whatever setup steps remain and calls `finalize_setup`.
+///
+/// Steps handled:
+/// 1. If either player still needs an active Pokémon, pick one via heuristic.
+/// 2. Bench-fill both players via heuristic (optional but greedy is fine).
+/// 3. Call `setup::finalize_setup` → transitions phase to Main, starts turn 0.
+fn advance_through_setup(state: &mut GameState, db: &CardDb) {
+    // Step 1: ensure both players have an active Pokémon.
+    for pi in 0..2 {
+        if state.players[pi].active.is_none() {
+            let legal = get_legal_setup_placements(state, db, pi);
+            if legal.is_empty() {
+                continue;
+            }
+            // Use heuristic to pick the best active Pokémon.
+            let action = HeuristicAgent.select_action(state, db, pi);
+            let hand_idx = action
+                .hand_index
+                .filter(|&i| i < state.players[pi].hand.len())
+                .unwrap_or_else(|| legal[0].hand_index.unwrap_or(0));
+            setup::apply_setup_placement(state, db, pi, hand_idx, &[]);
+        }
+    }
+
+    // Step 2: bench-fill both players (greedy — always fill if possible).
+    for pi in 0..2 {
+        loop {
+            let opts = get_legal_setup_bench_placements(state, db, pi);
+            // Only placements (not EndTurn) are interesting.
+            let placements: Vec<_> = opts
+                .iter()
+                .filter(|a| a.kind != ActionKind::EndTurn)
+                .collect();
+            if placements.is_empty() {
+                break;
+            }
+            // Heuristic picks among the bench-placement actions.
+            let action = HeuristicAgent.select_action(state, db, pi);
+            if action.kind == ActionKind::EndTurn {
+                break;
+            }
+            if let (Some(hi), Some(target)) = (action.hand_index, action.target) {
+                if target.is_bench() {
+                    let bench_idx = target.bench_index();
+                    if state.players[pi].bench[bench_idx].is_none()
+                        && hi < state.players[pi].hand.len()
+                    {
+                        let card_idx = state.players[pi].hand[hi];
+                        let card = db.get_by_idx(card_idx);
+                        let slot = crate::state::PokemonSlot::new(card_idx, card.hp);
+                        state.players[pi].bench[bench_idx] = Some(slot);
+                        state.players[pi].hand.remove(hi);
+                        continue;
+                    }
+                }
+            }
+            break; // couldn't apply action, stop
+        }
+    }
+
+    // Step 3: finalize setup → phase transitions to Main, turn counter starts.
+    setup::finalize_setup(state, db);
+}
+
+/// Legal actions for whatever phase the state is in, with MCTS-specific
+/// deduplication applied in Main phase:
+///
+/// **Bench slot deduplication**: placing a basic Pokémon from hand generates
+/// one action per empty bench slot (slot 0, 1, 2). All three are strategically
+/// identical in PTCGP — which slot a Pokémon occupies doesn't affect gameplay.
+/// We collapse them to just one action (the first available slot). This can
+/// reduce the action count from ~15 to ~10 for a typical hand, giving MCTS
+/// proportionally more simulations per meaningful decision.
+///
+/// Note: items that target a bench slot (e.g. Potion on bench[0] vs bench[1])
+/// ARE kept as distinct actions — those targets are meaningful choices.
 fn legal_for_phase(state: &GameState, db: &CardDb, player_idx: usize) -> Vec<Action> {
-    match state.phase {
+    let raw = match state.phase {
         GamePhase::Setup => {
             if state.players[player_idx].active.is_some() {
                 get_legal_setup_bench_placements(state, db, player_idx)
@@ -819,9 +1334,46 @@ fn legal_for_phase(state: &GameState, db: &CardDb, player_idx: usize) -> Vec<Act
             }
         }
         GamePhase::AwaitingBenchPromotion => get_legal_promotions(state, player_idx),
-        GamePhase::GameOver => Vec::new(),
+        GamePhase::GameOver => return Vec::new(),
         GamePhase::Main => get_legal_actions(state, db),
+    };
+
+    if state.phase != GamePhase::Main {
+        return raw;
     }
+
+    // Dedup basic-Pokémon bench placements. For each hand card that is a
+    // basic Pokémon, keep only the first bench-targeting PlayCard action.
+    // Items/Supporters with bench targets are distinct choices and kept as-is.
+    let hand = &state.players[player_idx].hand;
+    let mut seen_basic_bench: std::collections::HashSet<usize> = Default::default();
+    raw.into_iter()
+        .filter(|a| {
+            if a.kind != ActionKind::PlayCard {
+                return true;
+            }
+            let Some(hi) = a.hand_index else {
+                return true;
+            };
+            let Some(target) = a.target else {
+                return true;
+            };
+            // Only deduplicate bench targets owned by the current player.
+            if !target.is_bench() || target.player as usize != player_idx {
+                return true;
+            }
+            // Only collapse if the card is a Basic Pokémon.
+            let Some(&card_idx) = hand.get(hi) else {
+                return true;
+            };
+            let card = db.get_by_idx(card_idx);
+            if card.kind == CardKind::Pokemon && card.stage == Some(Stage::Basic) {
+                seen_basic_bench.insert(hi) // false on 2nd+ occurrence → filtered out
+            } else {
+                true // non-Pokémon card targeting a bench slot: meaningful choice, keep
+            }
+        })
+        .collect()
 }
 
 /// In `AwaitingBenchPromotion` the player whose active is None must promote.
@@ -881,9 +1433,33 @@ fn value_for_root(state: &GameState, root_player: usize) -> f64 {
 /// Apply an action and then perform the runner's post-action settle:
 /// on Attack + still-Main + no winner, run KO handling and advance turn.
 ///
+/// Apply an action to the game state and run any necessary post-action
+/// bookkeeping (KO checks, turn advance, etc.).
+///
 /// Mirrors the logic in `runner::run_main_loop` (around the Attack branch)
 /// so MCTS plays states forward consistently with real games.
+///
+/// Setup phase: `mutations::apply_action` doesn't handle Setup active
+/// selection (PlayCard with no bench target). Route those through
+/// `setup::apply_setup_placement` instead.
 fn apply_and_settle(state: &mut GameState, db: &CardDb, action: &Action) {
+    // Setup active-selection: PlayCard with no target places a Basic as active.
+    // Must use setup::apply_setup_placement instead of mutations::apply_action.
+    if state.phase == GamePhase::Setup
+        && action.kind == ActionKind::PlayCard
+        && action.target.is_none()
+    {
+        let pi = state.current_player;
+        if let Some(hi) = action.hand_index {
+            if hi < state.players[pi].hand.len() {
+                setup::apply_setup_placement(state, db, pi, hi, &[]);
+            }
+        }
+        // Setup doesn't advance to Main here — advance_through_setup in
+        // rollout() will finalize once both players have an active.
+        return;
+    }
+
     let kind = action.kind;
     mutations::apply_action(state, db, action);
     if kind == ActionKind::Attack

@@ -36,7 +36,8 @@ use crate::types::Element;
 
 use super::card_embed::CARD_EMBED_DIM;
 use super::features::{encode_with_cache, FEATURE_DIM};
-use super::mcts::RootQSource;
+use super::mcts::{PolicySource, RootQSource};
+use super::net::MAX_POLICY_SIZE;
 use super::replay::Sample;
 
 // ------------------------------------------------------------------ //
@@ -46,23 +47,34 @@ use super::replay::Sample;
 /// An [`Agent`] wrapper that records every main-phase decision it makes for
 /// later training. Delegates action selection to an inner agent.
 ///
-/// Each logged entry is `(feature_vector, player_idx, Option<root_q>)` so that
-/// `play_training_game` can assign the correct per-player win target after
-/// the game ends, optionally blending in the MCTS root Q-value.
+/// Each logged entry captures:
+/// - feature vector (board state from this player's POV)
+/// - player_idx
+/// - optional MCTS root Q-value (for win-target blending)
+/// - optional policy target + legal mask (AlphaZero-style visit distribution)
 ///
-/// We call the inner agent first, then capture the Q-value (if a
-/// [`RootQSource`] was provided), then push to the log. This ordering is
-/// important: the inner agent must run its MCTS before we read the Q.
+/// We call the inner agent first, then read Q and policy data after the
+/// search completes. Both are written by the inner [`MctsAgent`] during its
+/// `select_action` call, so reading after guarantees they're current.
 pub struct RecordingAgent<'a> {
     inner: &'a (dyn Agent + Send + Sync),
     /// Optional Q-value source — typically the same [`MctsAgent`] object as
     /// `inner`. When `Some`, each logged entry includes the root Q-value that
     /// the MCTS search computed for that decision.
     q_source: Option<&'a (dyn RootQSource + Send + Sync)>,
+    /// Optional policy-target source — typically the same [`MctsAgent`] as
+    /// `inner`. When `Some`, each logged entry includes the MCTS visit-count
+    /// distribution used as AlphaZero-style policy supervision.
+    policy_source: Option<&'a (dyn PolicySource + Send + Sync)>,
     /// Per-decision interior mutability so we can push states from inside
     /// `select_action(&self, ...)` (the trait's immutable receiver).
-    /// Each entry: (feature_vector, player_idx_that_acted, optional_root_q).
-    log: std::sync::Mutex<Vec<(Vec<f32>, usize, Option<f32>)>>,
+    /// Each entry: (features, player_idx, optional_q, optional_policy_data).
+    log: std::sync::Mutex<Vec<(
+        Vec<f32>,
+        usize,
+        Option<f32>,
+        Option<([f32; MAX_POLICY_SIZE], [f32; MAX_POLICY_SIZE])>,
+    )>>,
     /// Reference to a card-embed cache — avoids rebuilding it per-call.
     embed_cache: &'a [[f32; CARD_EMBED_DIM]],
 }
@@ -75,6 +87,7 @@ impl<'a> RecordingAgent<'a> {
         Self {
             inner,
             q_source: None,
+            policy_source: None,
             log: std::sync::Mutex::new(Vec::new()),
             embed_cache,
         }
@@ -87,8 +100,20 @@ impl<'a> RecordingAgent<'a> {
         self
     }
 
-    /// Consume the recorder and return the captured `(features, player_idx, root_q)` triples.
-    pub fn into_log(self) -> Vec<(Vec<f32>, usize, Option<f32>)> {
+    /// Attach a [`PolicySource`] (typically the same `MctsAgent` as `inner`)
+    /// so that MCTS visit-count distributions are captured as policy targets.
+    pub fn with_policy_source(mut self, ps: &'a (dyn PolicySource + Send + Sync)) -> Self {
+        self.policy_source = Some(ps);
+        self
+    }
+
+    /// Consume the recorder and return captured log entries.
+    pub fn into_log(self) -> Vec<(
+        Vec<f32>,
+        usize,
+        Option<f32>,
+        Option<([f32; MAX_POLICY_SIZE], [f32; MAX_POLICY_SIZE])>,
+    )> {
         self.log.into_inner().unwrap_or_default()
     }
 }
@@ -107,17 +132,17 @@ impl<'a> Agent for RecordingAgent<'a> {
         // samples from the meaty Main-phase decisions only.
         if state.phase == crate::types::GamePhase::Main {
             // Encode from the acting player's perspective — symmetric training.
-            // We must encode BEFORE calling inner (state is not mutated by select_action,
-            // so order doesn't matter for features), but we call inner BEFORE reading Q
-            // so that MCTS has finished its sims when we sample last_root_q().
+            // We encode BEFORE calling inner (state is not mutated by select_action),
+            // but call inner BEFORE reading Q/policy so MCTS has finished its sims.
             let feats = encode_with_cache(state, db, player_idx, self.embed_cache);
             debug_assert_eq!(feats.len(), FEATURE_DIM);
             let action = self.inner.select_action(state, db, player_idx);
-            // Read Q after the inner search completes. None for fast-path moves
-            // (setup phase delegated to heuristic, trivial single-action turns).
+            // Read Q and policy after the inner search completes.
+            // None for fast-path moves (setup delegated to heuristic, trivial 1-action).
             let maybe_q = self.q_source.and_then(|qs| qs.last_root_q());
+            let maybe_policy = self.policy_source.and_then(|ps| ps.last_policy_target());
             if let Ok(mut log) = self.log.lock() {
-                log.push((feats, player_idx, maybe_q));
+                log.push((feats, player_idx, maybe_q, maybe_policy));
             }
             return action;
         }
@@ -164,13 +189,16 @@ pub fn play_training_game(
     seed: u64,
     embed_cache: &[[f32; CARD_EMBED_DIM]],
     focal_q_source: Option<&(dyn RootQSource + Send + Sync)>,
+    focal_policy_source: Option<&(dyn PolicySource + Send + Sync)>,
     q_blend: f32,
 ) -> Vec<Sample> {
-    let recorder0 = if let Some(qs) = focal_q_source {
-        RecordingAgent::new(focal_agent, embed_cache).with_q_source(qs)
-    } else {
-        RecordingAgent::new(focal_agent, embed_cache)
-    };
+    let mut recorder0 = RecordingAgent::new(focal_agent, embed_cache);
+    if let Some(qs) = focal_q_source {
+        recorder0 = recorder0.with_q_source(qs);
+    }
+    if let Some(ps) = focal_policy_source {
+        recorder0 = recorder0.with_policy_source(ps);
+    }
     let recorder1 = RecordingAgent::new(opp_agent, embed_cache);
 
     let result = run_game(
@@ -190,7 +218,7 @@ pub fn play_training_game(
 
     log0.into_iter()
         .chain(log1)
-        .map(|(feats, player_idx, maybe_q)| {
+        .map(|(feats, player_idx, maybe_q, maybe_policy)| {
             // Game outcome from this player's POV: +1 win, -1 loss, 0 draw.
             let game_outcome: f32 = match result.winner {
                 Some(w) if w as usize == player_idx => 1.0,
@@ -225,7 +253,15 @@ pub fn play_training_game(
             let tempo = 1.0 - (result.turns as f32 / max_turns).min(1.0);
             let hp_target: f32 = win_target * tempo;
 
-            Sample::new(feats, win_target, prize_target, hp_target)
+            let sample = Sample::new(feats, win_target, prize_target, hp_target);
+            // Attach AlphaZero-style policy target when the focal agent ran MCTS
+            // and produced a visit-count distribution. Opponent samples and
+            // fast-path decisions (trivial 1-action turns) won't have policy data.
+            if let Some((policy_target, policy_legal)) = maybe_policy {
+                sample.with_policy(policy_target, policy_legal)
+            } else {
+                sample
+            }
         })
         .collect()
 }
@@ -270,6 +306,7 @@ mod tests {
             7,
             &cache,
             None,  // no Q source (HeuristicAgent has no MCTS Q)
+            None,  // no policy source
             0.0,   // no blending
         );
 

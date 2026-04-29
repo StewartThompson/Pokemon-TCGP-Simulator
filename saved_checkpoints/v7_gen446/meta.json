@@ -1,0 +1,8 @@
+{
+  "generation": 446,
+  "feature_version": 3,
+  "games_played": 178400,
+  "wall_time_s": 138.963934208,
+  "notes": "loss_win=0.1880, loss_policy=0.3666, vs_mcts-raw:720_score=64.9%",
+  "eval_spec": "720:0.50:25"
+}

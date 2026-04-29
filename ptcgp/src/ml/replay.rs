@@ -1,18 +1,19 @@
 //! Fixed-size replay buffer for self-play training.
 //!
 //! Each [`Sample`] captures one decision point:
-//!   * features — the encoded state the bot was looking at
-//!   * win_target — the eventual outcome, ±1 from that player's POV
-//!   * prize_target — end-of-game (my_prizes − opp_prizes) / 3
-//!   * hp_target — end-of-game HP differential (me − opp) / MAX_HP_SUM
+//!   * features      — the encoded state the bot was looking at
+//!   * win_target    — the eventual outcome, ±1 from that player's POV
+//!   * prize_target  — end-of-game (my_prizes − opp_prizes) / 3
+//!   * hp_target     — end-of-game HP differential (me − opp) / MAX_HP_SUM
+//!   * policy_target — MCTS visit-count distribution over [`MAX_POLICY_SIZE`] slots
+//!   * policy_legal  — 1.0 for legal action slots, 0.0 otherwise (for masked CE loss)
 //!
 //! The buffer is FIFO (oldest evicted when full) and stored entirely in
-//! memory. Size 50k × (FEATURE_DIM=273 floats + 3 targets) ≈ ~55 MB —
-//! fine for a laptop and plenty of variance across generations.
+//! memory. Size 50k × (FEATURE_DIM + 3 + 2×MAX_POLICY_SIZE floats) ≈ ~60 MB.
 //!
 //! Serialization is manual (no serde derives for f32 arrays) — we write
-//! a flat binary format: magic header + FEATURE_VERSION + count, then
-//! packed (features..., win, prize, hp) for each sample.
+//! a flat binary format: magic header + FEATURE_VERSION + REPLAY_FORMAT_VERSION
+//! + count, then packed (features..., win, prize, hp, policy..., legal...) per sample.
 
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -22,16 +23,29 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use super::features::{FEATURE_DIM, FEATURE_VERSION};
+use super::net::MAX_POLICY_SIZE;
 
-const MAGIC: &[u8; 8] = b"PTCGPRB\x01";
+const MAGIC: &[u8; 8] = b"PTCGPRB\x02";
+
+/// Format version for the replay binary — bumped when the per-sample layout changes.
+/// v1: features + win + prize + hp (old)
+/// v2: features + win + prize + hp + policy_target[32] + policy_legal[32]
+const REPLAY_FORMAT_VERSION: u32 = 2;
 
 /// One training datum from a single game-state decision.
 #[derive(Clone, Debug)]
 pub struct Sample {
-    pub features: Vec<f32>, // length FEATURE_DIM
-    pub win_target: f32,    // [-1, +1]
-    pub prize_target: f32,  // normalized prize differential
-    pub hp_target: f32,     // normalized HP differential
+    pub features: Vec<f32>,                     // length FEATURE_DIM
+    pub win_target: f32,                         // [-1, +1]
+    pub prize_target: f32,                       // normalized prize differential
+    pub hp_target: f32,                          // normalized HP differential
+    /// MCTS visit-count distribution: probability of each action in [0, MAX_POLICY_SIZE).
+    /// Sums to 1.0 over visited actions; 0.0 for unvisited / illegal.
+    pub policy_target: [f32; MAX_POLICY_SIZE],
+    /// 1.0 if the action slot was legal in this state, 0.0 otherwise.
+    /// Used to mask out illegal slots in the cross-entropy loss so the
+    /// network isn't penalised for high logits on impossible actions.
+    pub policy_legal: [f32; MAX_POLICY_SIZE],
 }
 
 impl Sample {
@@ -42,7 +56,26 @@ impl Sample {
             win_target: win,
             prize_target: prize,
             hp_target: hp,
+            policy_target: [0.0; MAX_POLICY_SIZE],
+            policy_legal: [0.0; MAX_POLICY_SIZE],
         }
+    }
+
+    pub fn with_policy(
+        mut self,
+        policy_target: [f32; MAX_POLICY_SIZE],
+        policy_legal: [f32; MAX_POLICY_SIZE],
+    ) -> Self {
+        self.policy_target = policy_target;
+        self.policy_legal = policy_legal;
+        self
+    }
+
+    /// True if this sample has a non-trivial policy target (at least one
+    /// visited action recorded). Samples without policy targets (e.g. from
+    /// non-MCTS agents) still contribute to value-head training.
+    pub fn has_policy(&self) -> bool {
+        self.policy_target.iter().any(|&v| v > 1e-9)
     }
 }
 
@@ -118,16 +151,22 @@ impl ReplayBuffer {
         let mut w = BufWriter::new(f);
         w.write_all(MAGIC)?;
         w.write_all(&FEATURE_VERSION.to_le_bytes())?;
+        w.write_all(&REPLAY_FORMAT_VERSION.to_le_bytes())?;
         w.write_all(&(FEATURE_DIM as u32).to_le_bytes())?;
         w.write_all(&(self.samples.len() as u64).to_le_bytes())?;
         for s in &self.samples {
-            // features as f32 little-endian
             for &f in &s.features {
                 w.write_all(&f.to_le_bytes())?;
             }
             w.write_all(&s.win_target.to_le_bytes())?;
             w.write_all(&s.prize_target.to_le_bytes())?;
             w.write_all(&s.hp_target.to_le_bytes())?;
+            for &v in &s.policy_target {
+                w.write_all(&v.to_le_bytes())?;
+            }
+            for &v in &s.policy_legal {
+                w.write_all(&v.to_le_bytes())?;
+            }
         }
         w.flush()?;
         Ok(())
@@ -137,8 +176,6 @@ impl ReplayBuffer {
     /// means the replay buffer was built with a different feature layout
     /// and the samples are no longer meaningful.
     pub fn load(path: &Path, cap: usize) -> std::io::Result<Self> {
-        // Cap of 0 means "weights-only load" — don't read the replay file at all.
-        // Used by league training to load past-gen nets without paying 338MB I/O per gen.
         if cap == 0 {
             return Ok(Self::new(0));
         }
@@ -150,7 +187,7 @@ impl ReplayBuffer {
         if &magic != MAGIC {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "replay-buffer magic mismatch (corrupt or wrong file)",
+                "replay-buffer magic mismatch — old format (pre-policy-head); discard with --fresh-replay",
             ));
         }
 
@@ -163,6 +200,19 @@ impl ReplayBuffer {
                 format!(
                     "replay-buffer feature_version {} differs from current {} — discard and regenerate",
                     on_disk_fv, FEATURE_VERSION
+                ),
+            ));
+        }
+
+        let mut rfv = [0u8; 4];
+        r.read_exact(&mut rfv)?;
+        let on_disk_rfv = u32::from_le_bytes(rfv);
+        if on_disk_rfv != REPLAY_FORMAT_VERSION {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "replay format version {} differs from current {} — discard with --fresh-replay",
+                    on_disk_rfv, REPLAY_FORMAT_VERSION
                 ),
             ));
         }
@@ -198,7 +248,17 @@ impl ReplayBuffer {
             let prize = f32::from_le_bytes(fbuf);
             r.read_exact(&mut fbuf)?;
             let hp = f32::from_le_bytes(fbuf);
-            buf.push(Sample::new(features, win, prize, hp));
+            let mut policy_target = [0.0f32; MAX_POLICY_SIZE];
+            for v in &mut policy_target {
+                r.read_exact(&mut fbuf)?;
+                *v = f32::from_le_bytes(fbuf);
+            }
+            let mut policy_legal = [0.0f32; MAX_POLICY_SIZE];
+            for v in &mut policy_legal {
+                r.read_exact(&mut fbuf)?;
+                *v = f32::from_le_bytes(fbuf);
+            }
+            buf.push(Sample { features, win_target: win, prize_target: prize, hp_target: hp, policy_target, policy_legal });
         }
         Ok(buf)
     }
@@ -222,7 +282,6 @@ mod tests {
         buf.push(mk_sample(0.3));
         buf.push(mk_sample(0.4)); // evicts 0.1
         assert_eq!(buf.len(), 3);
-        // First remaining sample should be 0.2.
         assert!((buf.samples[0].win_target - 0.2).abs() < 1e-6);
         assert!((buf.samples[2].win_target - 0.4).abs() < 1e-6);
     }
@@ -236,7 +295,6 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(7);
         let batch = buf.sample_batch(8, &mut rng);
         assert_eq!(batch.len(), 8);
-        // All samples should come from the buffer (not null/random).
         for s in &batch {
             assert_eq!(s.features.len(), FEATURE_DIM);
         }
@@ -249,13 +307,20 @@ mod tests {
 
         let mut buf = ReplayBuffer::new(10);
         for i in 0..5 {
-            buf.push(mk_sample(i as f32 * 0.1));
+            let mut s = mk_sample(i as f32 * 0.1);
+            s.policy_target[0] = 0.5;
+            s.policy_target[1] = 0.5;
+            s.policy_legal[0] = 1.0;
+            s.policy_legal[1] = 1.0;
+            buf.push(s);
         }
         buf.save(&tmp).expect("save");
         let loaded = ReplayBuffer::load(&tmp, 10).expect("load");
         assert_eq!(loaded.len(), 5);
         for i in 0..5 {
             assert!((loaded.samples[i].win_target - (i as f32 * 0.1)).abs() < 1e-6);
+            assert!((loaded.samples[i].policy_target[0] - 0.5).abs() < 1e-6);
+            assert!((loaded.samples[i].policy_legal[1] - 1.0).abs() < 1e-6);
         }
         let _ = std::fs::remove_file(&tmp);
     }

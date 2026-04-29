@@ -42,7 +42,8 @@ use ptcgp::ml::{
     features::FEATURE_DIM,
     league::{pick_opponent, Opponent},
     net::make_optimizer,
-    play_training_game, train_epoch, InferenceNet, LeafValue, MctsAgent, MctsConfig, ReplayBuffer,
+    mcts::PolicySource,
+    play_training_game, train_epoch_weighted, InferenceNet, LeafValue, MctsAgent, MctsConfig, ReplayBuffer,
     RootQSource, ValueNet,
 };
 use ptcgp::agents::Agent as AgentTrait;
@@ -82,6 +83,16 @@ struct Args {
     /// AdamW learning rate.
     #[arg(long, default_value_t = 1e-3)]
     lr: f64,
+    /// Optional final learning rate for linear LR decay.
+    ///
+    /// When set, the LR linearly decays from `--lr` (initial) to
+    /// `--lr-end` (final) over all `--generations` training steps.
+    /// The decay combats loss oscillation late in training when the optimizer
+    /// is bouncing around the minimum. Leave unset for constant LR.
+    ///
+    /// Recommended: `--lr 1e-3 --lr-end 2e-4` for runs of 60+ gens.
+    #[arg(long)]
+    lr_end: Option<f64>,
     /// Replay buffer capacity (samples).
     #[arg(long, default_value_t = 50_000)]
     replay_cap: usize,
@@ -171,6 +182,74 @@ struct Args {
     ///   --eval-opponent heuristic  (vs HeuristicAgent)
     #[arg(long, default_value = "first")]
     eval_opponent: String,
+    /// Number of PIMC determinizations per MCTS decision.
+    ///
+    /// Each determinization samples a different opponent hand from the pool of
+    /// unknown cards and builds a separate search tree. Visit counts are summed
+    /// across all K trees before picking the best action. This gives the bot
+    /// much better handling of hidden-information uncertainty at the same total
+    /// sim budget (e.g. K=4, sims=240 → 60 sims per determinization).
+    ///
+    /// K=1 = single determinization (original behaviour).
+    /// K=4 = strong default; good tradeoff of diversity vs tree depth.
+    #[arg(long, default_value_t = 4)]
+    determinizations: usize,
+    /// Weight for auxiliary training heads (prize differential + tempo).
+    ///
+    /// Total loss = L_win + aux_loss_weight * (L_prize + L_hp).
+    ///
+    /// 0.3 = original conservative default (win head dominates).
+    /// 0.5 = balanced — stronger gradient signal on prize/tempo heads,
+    ///       which combats passive-play convergence by teaching the trunk
+    ///       that aggressive prize-taking and quick wins are better.
+    ///
+    /// Increasing above 0.5 risks the win head becoming underfit;
+    /// keep in [0.3, 0.7] range.
+    #[arg(long, default_value_t = 0.5_f32)]
+    aux_loss_weight: f32,
+    /// Start with a clean replay buffer instead of loading the one from
+    /// the resumed checkpoint. Useful after a major algorithm change so
+    /// old-algorithm data doesn't slow convergence.
+    #[arg(long, default_value_t = false)]
+    fresh_replay: bool,
+    /// Weight for the AlphaZero-style policy head cross-entropy loss.
+    ///
+    /// Total loss = L_win + aux_weight*(L_prize + L_hp) + policy_weight*L_policy
+    ///
+    /// 0.0 = disable policy head training entirely (value-only mode, original)
+    /// 1.0 = equal weight to policy and win heads (AlphaZero default, but risky
+    ///       early in training: CE ≈ log(32) ≈ 3.5 vs win_loss ≈ 0.17 → policy
+    ///       dominates gradients 20×, which may destabilise the value head)
+    ///
+    /// Recommended: 0.1 during early training, 0.5–1.0 once policy_loss < 2.0.
+    /// Default 0.1: keeps policy signal meaningful without drowning the value head.
+    #[arg(long, default_value_t = 0.1_f32)]
+    policy_weight: f32,
+    /// Use the neural network's policy logits as P-UCT prior probabilities in
+    /// the MCTS tree. Default false: heuristic priors are used instead, which
+    /// avoids search degradation before the policy head is well-calibrated.
+    ///
+    /// Enable after 20-30 generations (when loss_policy < 2.0) to let the
+    /// trained policy head guide the search instead of heuristic priors.
+    /// Using random-weight network priors early in training distorts visit
+    /// distributions and destabilises the policy target feedback loop.
+    #[arg(long, default_value_t = false)]
+    use_net_priors: bool,
+    /// Temperature τ for sharpening MCTS visit-count distributions before using
+    /// them as policy training targets.
+    ///
+    /// `policy_target[a] ∝ N(a)^(1/τ)` — lower τ = sharper / more peaked.
+    ///
+    /// With only 240 sims the raw visit distribution is only mildly concentrated
+    /// (~60% on the best action), giving near-zero gradient to the policy head.
+    /// Sharpening amplifies the signal:
+    ///   τ=1.0 → raw visits (original, weak gradient)
+    ///   τ=0.5 → visits² (~90% on best action, recommended)
+    ///   τ=0.25 → visits⁴ (aggressive sharpening)
+    ///
+    /// Default 0.5 is the recommended starting point.
+    #[arg(long, default_value_t = 0.5_f32)]
+    policy_target_tau: f32,
 }
 
 // ------------------------------------------------------------------ //
@@ -274,7 +353,8 @@ fn main() -> candle_core::Result<()> {
     // Also track games_played_base so metadata stays accurate on resume.
     let (current_net, mut buffer, start_gen, games_played_base) = if args.resume {
         if let Some(latest) = latest_generation(&args.checkpoint_dir) {
-            println!("Resuming from gen_{:03}/", latest);
+            println!("Resuming from gen_{:03}/{}", latest,
+                if args.fresh_replay { " (fresh replay buffer)" } else { "" });
             let (net, meta, buf) = load_generation(
                 &args.checkpoint_dir,
                 latest,
@@ -282,15 +362,23 @@ fn main() -> candle_core::Result<()> {
                 args.replay_cap,
             )
             .map_err(|e| candle_core::Error::Msg(format!("load gen: {e}")))?;
+            // --fresh-replay: discard the loaded buffer so new self-play
+            // data from the current algorithm fills it from scratch. Useful
+            // after a major MCTS change to avoid training on stale trajectories.
+            let effective_buf = if args.fresh_replay {
+                ReplayBuffer::new(args.replay_cap)
+            } else {
+                buf
+            };
             println!(
                 "  loaded gen={}  replay_size={}  total_games={}  wall={:.1}s",
                 meta.generation,
-                buf.len(),
+                effective_buf.len(),
                 meta.games_played,
                 meta.wall_time_s,
             );
             let gp = meta.games_played;
-            (net, buf, latest, gp)
+            (net, effective_buf, latest, gp)
         } else {
             println!("--resume but no checkpoint found; starting from gen 0");
             let net = ValueNet::new(infer_device.clone())?;
@@ -312,6 +400,10 @@ fn main() -> candle_core::Result<()> {
     let mut net_arc: Arc<ValueNet> = Arc::new(current_net);
 
     let mut rng = SmallRng::seed_from_u64(args.seed);
+
+    // Best-checkpoint tracking: save a copy to `best/` whenever a new win-rate
+    // record is set. Prevents the run from losing its peak if later gens regress.
+    let mut best_eval_wr: f64 = 0.0;
 
     for gen_offset in 0..args.generations {
         let gen = start_gen + 1 + gen_offset;
@@ -386,6 +478,9 @@ fn main() -> candle_core::Result<()> {
             args.heuristic_rollouts,
             args.heuristic_rollout_depth,
             args.mcts_q_blend,
+            args.determinizations,
+            args.use_net_priors,
+            args.policy_target_tau,
         );
         let sp_elapsed = sp_t.elapsed();
         println!(
@@ -410,23 +505,33 @@ fn main() -> candle_core::Result<()> {
         } else {
             net_cpu
         };
-        let mut opt = make_optimizer(&net_train, args.lr)?;
+        // Linear LR decay: starts at args.lr, ends at args.lr_end (if set).
+        let current_lr = if let Some(lr_end) = args.lr_end {
+            let progress = gen_offset as f64 / args.generations.max(1) as f64;
+            args.lr + (lr_end - args.lr) * progress
+        } else {
+            args.lr
+        };
+        let mut opt = make_optimizer(&net_train, current_lr)?;
         let train_t = Instant::now();
-        let stats = train_epoch(
+        let stats = train_epoch_weighted(
             &net_train,
             &mut opt,
             &buffer,
             args.batch_size,
             args.train_steps,
             &mut rng,
+            args.aux_loss_weight,
+            args.policy_weight,
         )?;
         let train_elapsed = train_t.elapsed();
         println!(
-            "  train:     batches={}  loss_win={:.4}  loss_prize={:.4}  loss_hp={:.4}  ({:.1}s)",
+            "  train:     batches={}  loss_win={:.4}  loss_prize={:.4}  loss_hp={:.4}  loss_policy={:.4}  ({:.1}s)",
             stats.batches,
             stats.loss_win,
             stats.loss_prize,
             stats.loss_hp,
+            stats.loss_policy,
             train_elapsed.as_secs_f64(),
         );
 
@@ -451,6 +556,7 @@ fn main() -> candle_core::Result<()> {
             args.hybrid_rollout_depth,
             args.heuristic_rollouts,
             args.heuristic_rollout_depth,
+            args.determinizations,
         );
         let (wr, net_back) = eval_vs_agent(
             &db,
@@ -465,13 +571,19 @@ fn main() -> candle_core::Result<()> {
             args.heuristic_rollouts,
             args.heuristic_rollout_depth,
             &infer_device,
+            args.determinizations,
         );
+        let is_new_best = wr > best_eval_wr;
+        if is_new_best {
+            best_eval_wr = wr;
+        }
         println!(
-            "  eval:      vs_{} = {:.1}% score  ({} games, {:.1}s)",
+            "  eval:      vs_{} = {:.1}% score  ({} games, {:.1}s){}",
             opp_label,
             wr * 100.0,
             args.eval_games,
             eval_t.elapsed().as_secs_f64(),
+            if is_new_best { "  ★ NEW BEST" } else { "" },
         );
 
         // --- 4. Save gen ---
@@ -481,11 +593,21 @@ fn main() -> candle_core::Result<()> {
             games_played: games_played_base + (gen_offset as u64 + 1) * args.games_per_gen as u64,
             wall_time_s: t0.elapsed().as_secs_f64(),
             notes: format!(
-                "loss_win={:.4}, vs_{}_score={:.1}%",
+                "loss_win={:.4}, loss_policy={:.4}, vs_{}_score={:.1}%{}",
                 stats.loss_win,
+                stats.loss_policy,
                 opp_label,
-                wr * 100.0
+                wr * 100.0,
+                if is_new_best { " [BEST]" } else { "" }
             ),
+            // Record the eval parameters so `--agent ai` can reconstruct
+            // the exact config this model was trained/evaluated with.
+            eval_spec: Some(format!(
+                "{}:{:.2}:{}",
+                args.mcts_sims,
+                args.hybrid_weight,
+                args.hybrid_rollout_depth
+            )),
         };
         save_generation(
             &args.checkpoint_dir,
@@ -501,6 +623,24 @@ fn main() -> candle_core::Result<()> {
             gen,
             buffer.len(),
         );
+
+        // Save best checkpoint when a new win-rate record is set.
+        // This preserves the peak regardless of later regressions.
+        if is_new_best {
+            let best_dir = args.checkpoint_dir.join("best");
+            // Copy the just-saved gen directory to `best/`.
+            // We re-save rather than symlinking so it's always a real checkpoint.
+            if let Err(e) = save_generation(&best_dir, gen, &net_back, None, &meta) {
+                eprintln!("  warning: couldn't save best checkpoint: {}", e);
+            } else {
+                println!(
+                    "  best:      saved to {}/  (vs_{} {:.1}%)",
+                    best_dir.display(),
+                    opp_label,
+                    wr * 100.0
+                );
+            }
+        }
 
         // Loop back with net wrapped in Arc for next gen.
         net_arc = Arc::new(net_back);
@@ -541,6 +681,9 @@ fn collect_selfplay_samples(
     heuristic_rollouts: bool,
     heuristic_rollout_depth: u32,
     mcts_q_blend: f32,
+    determinizations: usize,
+    use_network_priors: bool,
+    policy_target_tau: f32,
 ) -> Vec<ptcgp::ml::Sample> {
     let past_gens: Vec<u32> = past_nets.keys().copied().collect();
 
@@ -566,10 +709,13 @@ fn collect_selfplay_samples(
             };
             let config = MctsConfig {
                 total_sims: mcts_sims,
+                determinizations,
                 leaf_value_source: leaf_value,
                 rollout_depth_cap: depth_cap,
                 temperature: 1.0, // sample visits (exploration) during self-play
                 use_dirichlet: true, // Dirichlet root noise for exploration diversity
+                use_network_priors, // controlled by --use-net-priors flag
+                policy_target_tau, // sharpening for policy supervision targets
                 ..Default::default()
             };
             // Focal agent: share embed_cache + inference_net to avoid per-agent allocs.
@@ -649,11 +795,10 @@ fn collect_selfplay_samples(
             let opp_deck_idx = if n > 1 { (i + n / 2) % n } else { 0 };
             let (opp_deck, opp_energy) = &deck_pool[opp_deck_idx];
 
-            // Pass focal as its own Q source so MCTS root Q values are
-            // captured and blended into the win target. Opponent samples
-            // (recorder1 inside play_training_game) always use plain game
-            // outcome since we don't have a Q source reference for the opp
-            // agent (it's a Box<dyn Agent> which may be HeuristicAgent).
+            // Pass focal as its own Q and policy sources so MCTS root Q values
+            // and visit-count distributions are captured for training.
+            // Opponent samples always use plain game outcome since the opponent
+            // may be a HeuristicAgent with no MCTS data.
             play_training_game(
                 db.as_ref(),
                 &focal,
@@ -665,6 +810,7 @@ fn collect_selfplay_samples(
                 base_seed.wrapping_add(i as u64),
                 embed_cache.as_slice(),
                 Some(&focal as &(dyn RootQSource + Send + Sync)),
+                Some(&focal as &(dyn PolicySource + Send + Sync)),
                 mcts_q_blend,
             )
         })
@@ -704,9 +850,13 @@ fn resolve_eval_opponent(
     hybrid_rollout_depth: u32,
     heuristic_rollouts: bool,
     heuristic_rollout_depth: u32,
+    determinizations: usize,
 ) -> (String, Arc<dyn Agent>) {
-    // Handle mcts-raw[:sims] — pure MCTS with heuristic rollouts, no learned net.
+    // Handle mcts-raw[-heur][:<sims>] — MCTS with heuristic rollouts, no learned net.
+    // "mcts-raw-heur" is accepted as an alias (consistent with the ptcgp eval binary).
     // This is the best eval baseline: fixed strength, honest benchmark.
+    let norm_spec = spec.replace("mcts-raw-heur", "mcts-raw");
+    let spec = norm_spec.as_str();
     if spec == "mcts-raw" || spec.starts_with("mcts-raw:") {
         let sims = spec
             .strip_prefix("mcts-raw:")
@@ -714,6 +864,7 @@ fn resolve_eval_opponent(
             .unwrap_or(mcts_sims);
         let config = MctsConfig {
             total_sims: sims,
+            determinizations,
             leaf_value_source: LeafValue::HeuristicRollout,
             rollout_depth_cap: heuristic_rollout_depth,
             temperature: 0.0,
@@ -762,6 +913,7 @@ fn resolve_eval_opponent(
                     };
                     let config = MctsConfig {
                         total_sims: mcts_sims,
+                        determinizations,
                         leaf_value_source: leaf_value,
                         rollout_depth_cap: depth_cap,
                         temperature: 0.0,
@@ -784,6 +936,15 @@ fn resolve_eval_opponent(
 
 /// Head-to-head eval of `net` vs any `Arc<dyn Agent>` opponent.
 /// Returns `(win_rate_of_net_agent, net_returned)`.
+///
+/// The eval agent **always** uses the neural network at leaves (hybrid mode
+/// with `hybrid_weight`). This is intentionally separate from self-play
+/// leaf eval — `--heuristic-rollouts` controls self-play only. Using the
+/// NN in eval is what makes the in-training win-rate signal meaningful: if
+/// the eval agent also used pure heuristic rollouts (like the baseline
+/// `mcts-raw-heur` opponent), both sides would be identical and results
+/// would be pure noise around 50%. Using the NN in eval measures whether
+/// the value head has learned anything useful beyond the heuristic.
 fn eval_vs_agent(
     db: &Arc<CardDb>,
     net: Arc<ValueNet>,
@@ -794,16 +955,19 @@ fn eval_vs_agent(
     seed: u64,
     hybrid_weight: f32,
     hybrid_rollout_depth: u32,
-    heuristic_rollouts: bool,
-    heuristic_rollout_depth: u32,
+    _heuristic_rollouts: bool, // only for self-play; eval always uses NN at leaves
+    _heuristic_rollout_depth: u32,
     device: &Device,
+    determinizations: usize,
 ) -> (f64, ValueNet) {
-    let (leaf_value, depth_cap) = if heuristic_rollouts {
-        (LeafValue::HeuristicRollout, heuristic_rollout_depth)
-    } else if hybrid_weight >= 0.999 {
+    // Eval agent always uses the NN for leaf evaluation regardless of the
+    // self-play leaf-eval strategy. This makes the training win-rate signal
+    // meaningful: pure heuristic rollouts on both sides = identical agents = noise.
+    let (leaf_value, depth_cap) = if hybrid_weight >= 0.999 {
         (LeafValue::ValueNet, 200)
     } else if hybrid_weight <= 0.001 {
-        (LeafValue::RandomRollout, 200)
+        // Even at weight=0 we want some NN signal in eval; fall back to hybrid 0.3.
+        (LeafValue::HybridValueRollout { net_weight: 0.3, rollout_depth: hybrid_rollout_depth }, 200)
     } else {
         (LeafValue::HybridValueRollout {
             net_weight: hybrid_weight,
@@ -812,6 +976,7 @@ fn eval_vs_agent(
     };
     let config = MctsConfig {
         total_sims: mcts_sims,
+        determinizations,
         leaf_value_source: leaf_value,
         rollout_depth_cap: depth_cap,
         temperature: 0.0,

@@ -40,9 +40,9 @@ pub use checkpoint::{
     gen_dir, latest_generation, list_generations, load_generation, save_generation, Meta,
 };
 pub use league::{pick_opponent, Opponent};
-pub use mcts::{LeafValue, MctsAgent, MctsConfig, RootQSource};
-pub use net::{best_device, huber_loss, is_metal, make_optimizer, InferenceNet, ValueNet, ValueOutputs, HIDDEN_DIM};
+pub use mcts::{action_to_policy_idx, LeafValue, MctsAgent, MctsConfig, PolicySource, RootQSource};
+pub use net::{best_device, huber_loss, is_metal, make_optimizer, InferenceNet, ValueNet, ValueOutputs, HIDDEN_DIM, MAX_POLICY_SIZE};
 pub use nn_greedy::NnGreedyAgent;
 pub use replay::{ReplayBuffer, Sample};
 pub use selfplay::{play_training_game, RecordingAgent};
-pub use train::{train_epoch, TrainStats};
+pub use train::{train_epoch, train_epoch_weighted, TrainStats};

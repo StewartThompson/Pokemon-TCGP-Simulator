@@ -16,7 +16,7 @@ use ptcgp::batch::run_batch_fixed_decks;
 use ptcgp::card::CardDb;
 use ptcgp::decks::{get_sample_deck, ALL_DECK_NAMES};
 use ptcgp::ml::{
-    checkpoint::{latest_generation, load_generation},
+    checkpoint::{latest_generation, load_generation, Meta},
     LeafValue, MctsAgent, MctsConfig, NnGreedyAgent,
 };
 use ptcgp::runner::run_game;
@@ -227,15 +227,48 @@ fn random_seed() -> u64 {
 /// * `mcts:<gen>[:<sims>]`      — MCTS with value-net leaves, no rollout
 /// * `mcts-hybrid:<gen>[:<sims>[:<weight>[:<depth>]]]` — blended NN + rollout
 ///
+/// Read the eval_spec from the latest checkpoint's meta.json.
+/// Returns e.g. "240:0.50:25". Falls back to a safe default if unset.
+fn latest_eval_spec() -> String {
+    let ckpt_dir = std::env::var("PTCGP_CHECKPOINTS")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("./checkpoints"));
+    if let Some(gen) = latest_generation(&ckpt_dir) {
+        let meta_path = ckpt_dir
+            .join(format!("gen_{:03}", gen))
+            .join("meta.json");
+        if let Ok(s) = std::fs::read_to_string(&meta_path) {
+            if let Ok(meta) = serde_json::from_str::<Meta>(&s) {
+                if let Some(spec) = meta.eval_spec {
+                    return spec;
+                }
+            }
+        }
+    }
+    // Fallback for checkpoints that predate eval_spec.
+    "240:0.50:25".to_string()
+}
+
 /// Unknown values fall back to [`HeuristicAgent`].
 fn make_agent(name: &str, db: &Arc<CardDb>) -> Arc<dyn Agent> {
     let mut name = name.trim().to_lowercase();
-    // Aliases that map to concrete specs.
+    // "ai" and "ai-fast" dynamically resolve to the latest checkpoint,
+    // using whatever eval parameters were recorded in its meta.json.
     if name == "ai" {
-        name = "mcts-hybrid:latest:240:0.35:25".to_string();
+        name = format!("mcts-hybrid:latest:{}", latest_eval_spec());
     } else if name == "ai-fast" {
-        name = "mcts-hybrid:latest:80:0.35:15".to_string();
+        // Same model, fewer sims for speed.
+        let spec = latest_eval_spec();
+        let parts: Vec<&str> = spec.splitn(3, ':').collect();
+        let weight_depth = if parts.len() >= 3 {
+            format!("{}:{}", parts[1], parts[2])
+        } else {
+            "0.50:25".to_string()
+        };
+        name = format!("mcts-hybrid:latest:80:{}", weight_depth);
     }
+    // Note: mcts-raw-heur must be checked before mcts-raw since the latter
+    // is a prefix of the former. Using else-if makes the ordering explicit.
     if let Some(rest) = name.strip_prefix("mcts-raw-heur") {
         let sims = parse_sims(rest).unwrap_or(500);
         let config = MctsConfig {
@@ -244,8 +277,7 @@ fn make_agent(name: &str, db: &Arc<CardDb>) -> Arc<dyn Agent> {
             ..Default::default()
         };
         return Arc::new(MctsAgent::new(config, db.clone()));
-    }
-    if let Some(rest) = name.strip_prefix("mcts-raw") {
+    } else if let Some(rest) = name.strip_prefix("mcts-raw") {
         let sims = parse_sims(rest).unwrap_or(500);
         let config = MctsConfig {
             total_sims: sims,
@@ -267,16 +299,18 @@ fn make_agent(name: &str, db: &Arc<CardDb>) -> Arc<dyn Agent> {
         return Arc::new(NnGreedyAgent::new(Arc::new(net), db));
     }
 
-    // "mcts-hybrid:<gen>[:<sims>[:<net_weight>[:<rollout_depth>]]]"
+    // "mcts-hybrid:<gen>[:<sims>[:<net_weight>[:<rollout_depth>[:<determinizations>]]]]"
     if let Some(rest) = name.strip_prefix("mcts-hybrid:") {
         let mut parts = rest.split(':');
         let gen_str = parts.next().unwrap_or("latest");
         let sims: usize = parts.next().and_then(|s| s.parse().ok()).unwrap_or(240);
         let net_weight: f32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0.5);
         let rollout_depth: u32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(25);
+        let determinizations: usize = parts.next().and_then(|s| s.parse().ok()).unwrap_or(1);
         let net = load_gen_net(gen_str);
         let config = MctsConfig {
             total_sims: sims,
+            determinizations,
             leaf_value_source: LeafValue::HybridValueRollout {
                 net_weight,
                 rollout_depth,
@@ -288,16 +322,18 @@ fn make_agent(name: &str, db: &Arc<CardDb>) -> Arc<dyn Agent> {
         return Arc::new(agent);
     }
     if let Some(rest) = name.strip_prefix("mcts:") {
-        // Formats: "mcts:<gen>" or "mcts:<gen>:<sims>"
+        // Formats: "mcts:<gen>[:<sims>[:<determinizations>]]"
         let mut parts = rest.split(':');
         let gen_str = parts.next().unwrap_or("latest");
         let sims: usize = parts
             .next()
             .and_then(|s| s.parse().ok())
             .unwrap_or(240);
+        let determinizations: usize = parts.next().and_then(|s| s.parse().ok()).unwrap_or(1);
         let net = load_gen_net(gen_str);
         let config = MctsConfig {
             total_sims: sims,
+            determinizations,
             leaf_value_source: LeafValue::ValueNet,
             temperature: 0.0,
             ..Default::default()

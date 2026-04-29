@@ -25,28 +25,34 @@
 use crate::card::{Attack, CardDb};
 use crate::effects::EffectKind;
 use crate::state::{GameState, PokemonSlot};
-use crate::types::{CardKind, Element, GamePhase, Stage, StatusEffect};
+use crate::types::{CardKind, GamePhase, Stage, StatusEffect};
 
 use super::card_embed::{build_embed_cache, CARD_EMBED_DIM};
 
 /// Bump when the feature layout changes. Old checkpoints with a different
 /// `feature_version` in their meta.json will be rejected on load.
-pub const FEATURE_VERSION: u32 = 2;
+pub const FEATURE_VERSION: u32 = 4;
 
-/// Floats stored per board slot. See [`encode_slot`] for layout.
-pub const SLOT_DIM: usize = CARD_EMBED_DIM + 14;
+/// Floats stored per board slot. See [`encode_slot_into`] for layout.
+///
+/// Breakdown (32 floats): card_embed[15] + presence[1] + hp_ratio[1]
+/// + energy[8] + status×3 + tool[1] + turns_in_play[1] + evo_in_hand[1]
+/// + evolved_this_turn[1]
+pub const SLOT_DIM: usize = CARD_EMBED_DIM + 17;
 
 /// 8 board slots: my active, my bench[3], opp active, opp bench[3].
 pub const NUM_SLOTS: usize = 8;
 
 /// Global features (turn number, points, hand/deck counts, etc.).
 ///
-/// Breakdown (60 floats): 6 scalar (turn, points×2, first, my-turn, promoting)
+/// Breakdown (84 floats): 6 scalar (turn, points×2, first, my-turn, promoting)
 /// + 8 energy-one-hot + 7 my-hand-composition + 6 pile sizes +
 /// 7 opp-discard-composition + 3 per-turn flags + 3 ban flags + 1 damage-bonus
 /// + 8 tactical active-vs-active features (v2)
-/// + 11 supporter-category + board-context features (v2).
-pub const GLOBAL_DIM: usize = 60;
+/// + 11 supporter-category + board-context features (v2)
+/// + 15 my-hand-embed-mean (v3)
+/// + 9 strategic tempo + type + bench features (v4).
+pub const GLOBAL_DIM: usize = 84;
 
 /// Full feature vector size.
 pub const FEATURE_DIM: usize = SLOT_DIM * NUM_SLOTS + GLOBAL_DIM;
@@ -105,16 +111,17 @@ pub fn encode_into(
     let me = for_player;
     let opp = 1 - me;
     let mut cur = 0usize;
+    let my_hand = &state.players[me].hand[..];
 
-    encode_slot_into(out, &mut cur, state.players[me].active.as_ref(), cache);
+    encode_slot_into(out, &mut cur, state.players[me].active.as_ref(), cache, db, Some(my_hand));
     for j in 0..3 {
-        encode_slot_into(out, &mut cur, state.players[me].bench[j].as_ref(), cache);
+        encode_slot_into(out, &mut cur, state.players[me].bench[j].as_ref(), cache, db, Some(my_hand));
     }
-    encode_slot_into(out, &mut cur, state.players[opp].active.as_ref(), cache);
+    encode_slot_into(out, &mut cur, state.players[opp].active.as_ref(), cache, db, None);
     for j in 0..3 {
-        encode_slot_into(out, &mut cur, state.players[opp].bench[j].as_ref(), cache);
+        encode_slot_into(out, &mut cur, state.players[opp].bench[j].as_ref(), cache, db, None);
     }
-    encode_global_into(out, &mut cur, state, db, me);
+    encode_global_into(out, &mut cur, state, db, me, cache);
 
     debug_assert_eq!(cur, FEATURE_DIM, "encode_into wrote {}, expected {}", cur, FEATURE_DIM);
 }
@@ -127,8 +134,12 @@ pub fn encode_into(
 // Cursor-based slot encoding (zero-allocation hot path)
 // ------------------------------------------------------------------ //
 
-/// Cursor-based twin of [`encode_slot`]. Writes exactly [`SLOT_DIM`] floats
-/// starting at `out[*cur]` and advances `*cur` by [`SLOT_DIM`].
+/// Cursor-based slot encoder. Writes exactly [`SLOT_DIM`] floats starting at
+/// `out[*cur]` and advances `*cur` by [`SLOT_DIM`].
+///
+/// `my_hand` is `Some(slice)` for the acting player's slots (enables
+/// `evo_in_hand` and `evolved_this_turn` signals) and `None` for the
+/// opponent's slots where hand is hidden.
 ///
 /// Assumes `out` is already zeroed for the empty-slot case (see
 /// [`encode_into`] which zeroes the full buffer before calling this).
@@ -137,6 +148,8 @@ fn encode_slot_into(
     cur: &mut usize,
     slot: Option<&PokemonSlot>,
     cache: &[[f32; CARD_EMBED_DIM]],
+    db: &CardDb,
+    my_hand: Option<&[u16]>,
 ) {
     match slot {
         None => {
@@ -183,7 +196,34 @@ fn encode_slot_into(
             // Tool attached.
             out[*cur] = if s.tool_idx.is_some() { 1.0 } else { 0.0 };
             *cur += 1;
-            // Total: CARD_EMBED_DIM + 1 + 1 + 8 + 1 + 1 + 1 + 1 = SLOT_DIM ✓
+
+            // turns_in_play: how long this pokemon has been in play.
+            // Normalized by 20 (games rarely last longer than ~20 turns).
+            out[*cur] = (s.turns_in_play as f32 / 20.0).min(1.0);
+            *cur += 1;
+
+            // evo_in_hand: how many cards in my hand can evolve this pokemon.
+            // Only meaningful for my own slots (opp hand is hidden).
+            // Normalized by 2 (you can have at most 2 copies of any card).
+            out[*cur] = if let Some(hand) = my_hand {
+                let pokemon_name = &db.get_by_idx(s.card_idx).name;
+                let count = hand.iter().filter(|&&ci| {
+                    db.get_by_idx(ci)
+                        .evolves_from
+                        .as_deref()
+                        .map_or(false, |from| from == pokemon_name)
+                }).count();
+                (count as f32 / 2.0).min(1.0)
+            } else {
+                0.0
+            };
+            *cur += 1;
+
+            // evolved_this_turn: did this pokemon evolve this turn?
+            // Signals "freshly powered-up" state — ability triggers, momentum.
+            out[*cur] = s.evolved_this_turn as u8 as f32;
+            *cur += 1;
+            // Total: CARD_EMBED_DIM + 1+1+8+1+1+1+1+1+1+1 = CARD_EMBED_DIM + 17 = SLOT_DIM ✓
         }
     }
 }
@@ -203,6 +243,7 @@ fn encode_global_into(
     state: &GameState,
     db: &CardDb,
     me: usize,
+    embed_cache: &[[f32; CARD_EMBED_DIM]],
 ) {
     let start = *cur;
     let opp = 1 - me;
@@ -282,6 +323,31 @@ fn encode_global_into(
     let supporter = supporter_features(state, db, me);
     out[*cur..*cur + 11].copy_from_slice(&supporter);
     *cur += 11;
+
+    // Hand embed mean (15 floats, v3).
+    // Mean of card_embed over all cards in my hand — richer than composition
+    // counts because it captures actual card attributes (HP, element, damage).
+    // If hand is empty, leaves these as zeros (buffer pre-zeroed by encode_into).
+    let hand = &player.hand;
+    if !hand.is_empty() {
+        let mut mean = [0.0f32; CARD_EMBED_DIM];
+        for &ci in hand.iter() {
+            let emb = embed_cache.get(ci as usize).copied().unwrap_or([0.0; CARD_EMBED_DIM]);
+            for k in 0..CARD_EMBED_DIM {
+                mean[k] += emb[k];
+            }
+        }
+        let n = hand.len() as f32;
+        for k in 0..CARD_EMBED_DIM {
+            out[*cur + k] = mean[k] / n;
+        }
+    }
+    *cur += CARD_EMBED_DIM; // CARD_EMBED_DIM = 15
+
+    // Strategic tempo + type + bench features (9 floats, v4).
+    let strategic = strategic_features_v4(state, db, me);
+    out[*cur..*cur + 9].copy_from_slice(&strategic);
+    *cur += 9;
 
     debug_assert_eq!(
         *cur - start,
@@ -426,6 +492,102 @@ fn energy_deficit(slot: &PokemonSlot, atk: &Attack) -> u32 {
     let colorless_deficit = colorless_needed.saturating_sub(total_remaining);
 
     typed_deficit + colorless_deficit
+}
+
+// ------------------------------------------------------------------ //
+// Strategic tempo + type + bench features (v4)
+// ------------------------------------------------------------------ //
+
+/// Compute 9 floats covering opponent tempo, type matchup, and bench threats.
+///
+/// Layout:
+/// ```text
+///   [0]  opp_deficit_cheapest    energy opp needs for cheapest attack / 4.0
+///   [1]  opp_attacks_ready       count of opp attacks usable now / 2.0
+///   [2]  i_am_weak_to_opp        1.0 if my active is weak to opp's element
+///   [3]  opp_is_weak_to_me       1.0 if opp active is weak to my element
+///   [4]  my_bench_max_damage     max damage from my best powered bench pokemon / 200.0
+///   [5]  opp_bench_max_damage    max damage from opp's best powered bench pokemon / 200.0
+///   [6]  opp_bench_any_ready     1.0 if opp has any bench pokemon that can attack now
+///   [7]  i_can_ko_opp_next_turn  1.0 if one more energy would let me KO opp active
+///   [8]  opp_can_ko_me_next_turn 1.0 if one more energy would let opp KO my active
+/// ```
+fn strategic_features_v4(state: &GameState, db: &CardDb, me: usize) -> [f32; 9] {
+    let opp = 1 - me;
+    let my_active = state.players[me].active.as_ref();
+    let opp_active = state.players[opp].active.as_ref();
+
+    // --- Bench threats (independent of whether actives are present) ---
+    let my_bench_max_damage = state.players[me].bench.iter()
+        .filter_map(|s| s.as_ref())
+        .map(|slot| {
+            let card = db.get_by_idx(slot.card_idx);
+            let (_, _, max_now, _) = attack_readiness(slot, &card.attacks);
+            max_now
+        })
+        .max()
+        .unwrap_or(0);
+
+    let opp_bench_max_damage = state.players[opp].bench.iter()
+        .filter_map(|s| s.as_ref())
+        .map(|slot| {
+            let card = db.get_by_idx(slot.card_idx);
+            let (_, _, max_now, _) = attack_readiness(slot, &card.attacks);
+            max_now
+        })
+        .max()
+        .unwrap_or(0);
+
+    let opp_bench_any_ready = opp_bench_max_damage > 0;
+
+    // If either active is absent, return what we have so far with zeros for active-dependent features.
+    let (my_slot, opp_slot) = match (my_active, opp_active) {
+        (Some(m), Some(o)) => (m, o),
+        _ => return [
+            0.0, 0.0, 0.0, 0.0,
+            my_bench_max_damage as f32 / 200.0,
+            opp_bench_max_damage as f32 / 200.0,
+            opp_bench_any_ready as u8 as f32,
+            0.0, 0.0,
+        ],
+    };
+
+    let my_card = db.get_by_idx(my_slot.card_idx);
+    let opp_card = db.get_by_idx(opp_slot.card_idx);
+
+    // --- Opponent attack tempo ---
+    let (opp_deficit_cheapest, _, _, opp_ready_count) =
+        attack_readiness(opp_slot, &opp_card.attacks);
+
+    // --- Type weakness flags ---
+    let i_am_weak_to_opp = my_card.weakness == opp_card.element;
+    let opp_is_weak_to_me = opp_card.weakness == my_card.element;
+
+    // --- Next-turn KO threats (deficit == 1 for best-damage attack) ---
+    // "Could I KO them if I had exactly 1 more energy right now?"
+    let my_weakness_mult = if opp_is_weak_to_me { 2i16 } else { 1i16 };
+    let i_can_ko_next_turn = my_card.attacks.iter().any(|atk| {
+        energy_deficit(my_slot, atk) == 1
+            && (atk.damage * my_weakness_mult) >= opp_slot.current_hp
+    });
+
+    let opp_weakness_mult = if i_am_weak_to_opp { 2i16 } else { 1i16 };
+    let opp_can_ko_next_turn = opp_card.attacks.iter().any(|atk| {
+        energy_deficit(opp_slot, atk) == 1
+            && (atk.damage * opp_weakness_mult) >= my_slot.current_hp
+    });
+
+    [
+        (opp_deficit_cheapest as f32 / 4.0).min(1.0),
+        (opp_ready_count as f32 / 2.0).min(1.0),
+        i_am_weak_to_opp as u8 as f32,
+        opp_is_weak_to_me as u8 as f32,
+        my_bench_max_damage as f32 / 200.0,
+        opp_bench_max_damage as f32 / 200.0,
+        opp_bench_any_ready as u8 as f32,
+        i_can_ko_next_turn as u8 as f32,
+        opp_can_ko_next_turn as u8 as f32,
+    ]
 }
 
 // ------------------------------------------------------------------ //
@@ -612,8 +774,6 @@ fn hand_composition(hand: &[u16], db: &CardDb) -> [f32; 7] {
     for i in 0..7 {
         out[i] = counts[i] as f32 / 10.0;
     }
-    // Drop unused imports warning — Element is used elsewhere in the file via status flags.
-    let _ = Element::Grass;
     out
 }
 

@@ -265,6 +265,8 @@ fn run_main_loop(
 
     // Track whose turn it was last time we checked, so we can print turn headers.
     let mut last_printed_player: Option<usize> = None;
+    // Narration speed is constant for the lifetime of the game — compute once.
+    let narration = default_narration_speed(human_player);
 
     loop {
         steps += 1;
@@ -328,8 +330,10 @@ fn run_main_loop(
                 let current = state.current_player;
                 let is_ai = human_player.map_or(false, |hp| current != hp);
 
-                // Track turn switches (no extra print needed; the board redraws).
+                // On the first action of a new opponent turn, clear the log so only
+                // this turn's actions accumulate (shown as "Last turn:" on human's go).
                 if is_ai && last_printed_player != Some(current) {
+                    crate::ui::clear_event_log();
                     last_printed_player = Some(current);
                 }
 
@@ -356,14 +360,22 @@ fn run_main_loop(
                 state.coin_flip_log.clear();
                 mutations::apply_action(state, db, &action);
 
-                // Show coin flip results (if any) for both human and AI turns.
-                let narration = default_narration_speed(human_player);
+                // Show coin flip results (if any).
                 if human_player.is_some() && !state.coin_flip_log.is_empty() {
-                    println!();
-                    for flip in &state.coin_flip_log {
-                        println!("  {}", flip);
+                    if is_ai {
+                        // Opponent's flip — push into the event log so it appears
+                        // in "Last turn:" indented under the action that caused it.
+                        for flip in &state.coin_flip_log {
+                            crate::ui::push_event(format!("  ↳ {}", flip));
+                        }
+                    } else {
+                        // Human's flip — print directly (board redraws after).
+                        println!();
+                        for flip in &state.coin_flip_log {
+                            println!("  {}", flip);
+                        }
+                        narration.sleep(narration.coin_flip_pause());
                     }
-                    narration.sleep(narration.coin_flip_pause());
                     state.coin_flip_log.clear();
                 }
 

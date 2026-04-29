@@ -5,7 +5,8 @@ These are the best trained bot weights. No replay buffer is included (too large 
 | Checkpoint | Eval vs pure MCTS (720 sims) | Notes |
 |---|---|---|
 | `v7_gen446` | 68.1% | 331 features, trained for 446 gens |
-| `v8_gen105` | 66.4% | 340 features (+9 strategic), trained for 105 gens — still improving |
+| `v8_gen105` | 66.4% | 340 features (+9 strategic) — best eval score |
+| `v8_gen111` | 65.2% | 340 features — **latest, use this to resume training** |
 
 ## Resuming training on a new machine
 
@@ -14,10 +15,10 @@ These are the best trained bot weights. No replay buffer is included (too large 
 git clone https://github.com/StewartThompson/Pokemon-TCGP-Simulator.git
 cd Pokemon-TCGP-Simulator
 
-# 2. Copy the checkpoint you want into a checkpoints dir
-mkdir -p checkpoints_v8/gen_105
-cp saved_checkpoints/v8_gen105/weights.safetensors checkpoints_v8/gen_105/
-cp saved_checkpoints/v8_gen105/meta.json checkpoints_v8/gen_105/
+# 2. Copy the latest checkpoint into a checkpoints dir
+mkdir -p checkpoints_v8/gen_111
+cp saved_checkpoints/v8_gen111/weights.safetensors checkpoints_v8/gen_111/
+cp saved_checkpoints/v8_gen111/meta.json checkpoints_v8/gen_111/
 
 # 3. Build
 cd ptcgp && cargo build --release

@@ -27,6 +27,7 @@ use clap::Parser;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 use rayon::prelude::*;
+use std::io::Write as IoWrite;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -250,6 +251,64 @@ struct Args {
     /// Default 0.5 is the recommended starting point.
     #[arg(long, default_value_t = 0.5_f32)]
     policy_target_tau: f32,
+    /// Path for the training log file (written alongside stdout output).
+    /// Defaults to `<checkpoint-dir>/../logs/training.log`.
+    /// Pass an empty string to disable file logging.
+    #[arg(long)]
+    log_file: Option<PathBuf>,
+}
+
+// ------------------------------------------------------------------ //
+// Tee logger
+// ------------------------------------------------------------------ //
+
+struct Logger {
+    file: Option<std::io::BufWriter<std::fs::File>>,
+}
+
+impl Logger {
+    fn new(path: Option<&std::path::Path>) -> Self {
+        let file = path.and_then(|p| {
+            if let Some(parent) = p.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(p)
+                .ok()
+                .map(std::io::BufWriter::new)
+        });
+        Self { file }
+    }
+
+    fn log(&mut self, msg: &str) {
+        println!("{}", msg);
+        if let Some(ref mut f) = self.file {
+            let _ = writeln!(f, "{}", msg);
+            let _ = f.flush();
+        }
+    }
+
+    fn warn(&mut self, msg: &str) {
+        eprintln!("{}", msg);
+        if let Some(ref mut f) = self.file {
+            let _ = writeln!(f, "{}", msg);
+            let _ = f.flush();
+        }
+    }
+}
+
+macro_rules! tlog {
+    ($logger:expr, $($arg:tt)*) => {
+        $logger.log(&format!($($arg)*))
+    };
+}
+
+macro_rules! twarn {
+    ($logger:expr, $($arg:tt)*) => {
+        $logger.warn(&format!($($arg)*))
+    };
 }
 
 // ------------------------------------------------------------------ //
@@ -321,6 +380,18 @@ fn resolve_deck_pool(db: &CardDb, spec: &str) -> Vec<DeckPair> {
 fn main() -> candle_core::Result<()> {
     let args = Args::parse();
 
+    // Set up file logging (tees all output to a file alongside stdout).
+    let log_path: Option<std::path::PathBuf> = match &args.log_file {
+        Some(p) if p.as_os_str().is_empty() => None,  // explicitly disabled
+        Some(p) => Some(p.clone()),
+        None => {
+            // Default: <checkpoint_dir>/../logs/training.log
+            let parent = args.checkpoint_dir.parent().unwrap_or_else(|| std::path::Path::new("."));
+            Some(parent.join("logs").join("training.log"))
+        }
+    };
+    let mut logger = Logger::new(log_path.as_deref());
+
     if let Some(w) = args.workers {
         let _ = rayon::ThreadPoolBuilder::new().num_threads(w).build_global();
     }
@@ -328,7 +399,7 @@ fn main() -> candle_core::Result<()> {
     let db = Arc::new(CardDb::load_from_dir(&find_assets_dir()));
     let deck_pool = resolve_deck_pool(&db, &args.deck_pool);
     if deck_pool.is_empty() {
-        eprintln!("Error: deck-pool `{}` resolved to 0 valid decks", args.deck_pool);
+        twarn!(logger, "Error: deck-pool `{}` resolved to 0 valid decks", args.deck_pool);
         std::process::exit(1);
     }
     let embed_cache = Arc::new(build_embed_cache(&db));
@@ -339,21 +410,22 @@ fn main() -> candle_core::Result<()> {
     // Weights are transferred between them via a temp safetensors file.
     let train_device = best_device();
     let infer_device = Device::Cpu;
-    println!(
+    tlog!(
+        logger,
         "Compute device: training={}, inference=CPU (rayon parallel)",
         if is_metal(&train_device) { "Metal (Apple GPU) 🍎" } else { "CPU" }
     );
 
     // Make the checkpoint dir exist regardless of branch.
     std::fs::create_dir_all(&args.checkpoint_dir).unwrap_or_else(|e| {
-        eprintln!("Warning: couldn't create {}: {}", args.checkpoint_dir.display(), e);
+        twarn!(logger, "Warning: couldn't create {}: {}", args.checkpoint_dir.display(), e);
     });
 
     // --- Bootstrap: always load/init on infer_device (CPU) for parallel inference ---
     // Also track games_played_base so metadata stays accurate on resume.
     let (current_net, mut buffer, start_gen, games_played_base) = if args.resume {
         if let Some(latest) = latest_generation(&args.checkpoint_dir) {
-            println!("Resuming from gen_{:03}/{}", latest,
+            tlog!(logger, "Resuming from gen_{:03}/{}", latest,
                 if args.fresh_replay { " (fresh replay buffer)" } else { "" });
             let (net, meta, buf) = load_generation(
                 &args.checkpoint_dir,
@@ -370,7 +442,8 @@ fn main() -> candle_core::Result<()> {
             } else {
                 buf
             };
-            println!(
+            tlog!(
+                logger,
                 "  loaded gen={}  replay_size={}  total_games={}  wall={:.1}s",
                 meta.generation,
                 effective_buf.len(),
@@ -380,7 +453,7 @@ fn main() -> candle_core::Result<()> {
             let gp = meta.games_played;
             (net, effective_buf, latest, gp)
         } else {
-            println!("--resume but no checkpoint found; starting from gen 0");
+            tlog!(logger, "--resume but no checkpoint found; starting from gen 0");
             let net = ValueNet::new(infer_device.clone())?;
             let meta = Meta::new(0);
             save_generation(&args.checkpoint_dir, 0, &net, None, &meta)
@@ -388,7 +461,7 @@ fn main() -> candle_core::Result<()> {
             (net, ReplayBuffer::new(args.replay_cap), 0, 0u64)
         }
     } else {
-        println!("Initializing fresh gen_000/ (random weights)");
+        tlog!(logger, "Initializing fresh gen_000/ (random weights)");
         let net = ValueNet::new(infer_device.clone())?;
         let meta = Meta::new(0);
         save_generation(&args.checkpoint_dir, 0, &net, None, &meta)
@@ -409,7 +482,8 @@ fn main() -> candle_core::Result<()> {
         let gen = start_gen + 1 + gen_offset;
         let t0 = Instant::now();
 
-        println!(
+        tlog!(
+            logger,
             "\n================ GEN {} ================  ({} self-play games, {} MCTS sims/move)",
             gen, args.games_per_gen, args.mcts_sims,
         );
@@ -430,7 +504,7 @@ fn main() -> candle_core::Result<()> {
                     Ok((pnet, _, _)) => {
                         past_map.insert(g, Arc::new(pnet));
                     }
-                    Err(e) => eprintln!("  warning: couldn't load gen_{:03}: {}", g, e),
+                    Err(e) => twarn!(logger, "  warning: couldn't load gen_{:03}: {}", g, e),
                 }
             }
         }
@@ -483,7 +557,8 @@ fn main() -> candle_core::Result<()> {
             args.policy_target_tau,
         );
         let sp_elapsed = sp_t.elapsed();
-        println!(
+        tlog!(
+            logger,
             "  self-play: {} samples from {} games in {:.1}s ({:.1} games/s)",
             self_play_samples.len(),
             args.games_per_gen,
@@ -525,7 +600,8 @@ fn main() -> candle_core::Result<()> {
             args.policy_weight,
         )?;
         let train_elapsed = train_t.elapsed();
-        println!(
+        tlog!(
+            logger,
             "  train:     batches={}  loss_win={:.4}  loss_prize={:.4}  loss_hp={:.4}  loss_policy={:.4}  ({:.1}s)",
             stats.batches,
             stats.loss_win,
@@ -577,7 +653,8 @@ fn main() -> candle_core::Result<()> {
         if is_new_best {
             best_eval_wr = wr;
         }
-        println!(
+        tlog!(
+            logger,
             "  eval:      vs_{} = {:.1}% score  ({} games, {:.1}s){}",
             opp_label,
             wr * 100.0,
@@ -617,7 +694,8 @@ fn main() -> candle_core::Result<()> {
             &meta,
         )
         .map_err(|e| candle_core::Error::Msg(format!("save gen {}: {}", gen, e)))?;
-        println!(
+        tlog!(
+            logger,
             "  saved:     {}/gen_{:03}/  (replay_size={})",
             args.checkpoint_dir.display(),
             gen,
@@ -631,9 +709,10 @@ fn main() -> candle_core::Result<()> {
             // Copy the just-saved gen directory to `best/`.
             // We re-save rather than symlinking so it's always a real checkpoint.
             if let Err(e) = save_generation(&best_dir, gen, &net_back, None, &meta) {
-                eprintln!("  warning: couldn't save best checkpoint: {}", e);
+                twarn!(logger, "  warning: couldn't save best checkpoint: {}", e);
             } else {
-                println!(
+                tlog!(
+                    logger,
                     "  best:      saved to {}/  (vs_{} {:.1}%)",
                     best_dir.display(),
                     opp_label,
@@ -646,8 +725,8 @@ fn main() -> candle_core::Result<()> {
         net_arc = Arc::new(net_back);
     }
 
-    println!("\nDone — {} generations trained.", args.generations);
-    println!("Compare generations with:  ptcgp eval --a <gen_A> --b <gen_B> --games 500");
+    tlog!(logger, "\nDone — {} generations trained.", args.generations);
+    tlog!(logger, "Compare generations with:  ptcgp eval --a <gen_A> --b <gen_B> --games 500");
     Ok(())
 }
 

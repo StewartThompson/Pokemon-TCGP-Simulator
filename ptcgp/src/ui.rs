@@ -19,14 +19,18 @@ use crate::types::{CostSymbol, Element, StatusEffect};
 
 use std::sync::Mutex;
 static EVENT_LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
-const LOG_SIZE: usize = 6;
 
 pub fn push_event(msg: String) {
     if let Ok(mut log) = EVENT_LOG.lock() {
         log.push(msg);
-        if log.len() > LOG_SIZE {
-            log.remove(0);
-        }
+    }
+}
+
+/// Clear the log — called at the start of each new opponent turn so only
+/// that turn's actions are visible when the human gets control back.
+pub fn clear_event_log() {
+    if let Ok(mut log) = EVENT_LOG.lock() {
+        log.clear();
     }
 }
 
@@ -48,8 +52,8 @@ pub fn render_state(state: &GameState, db: &CardDb, human_player: usize) {
     // Clear and redraw from top.
     print!("\x1B[2J\x1B[H");
 
-    let opp         = 1 - human_player;
-    let turn_num    = state.turn_number.max(0) as u32 / 2 + 1;
+    let opp          = 1 - human_player;
+    let turn_num     = state.player_turn_number() + 1;
     let is_your_turn = state.current_player == human_player;
 
     // ── Opponent header ──────────────────────────────────────────────
@@ -118,7 +122,7 @@ pub fn render_state(state: &GameState, db: &CardDb, human_player: usize) {
     // ── Event log ────────────────────────────────────────────────────
     if let Ok(log) = EVENT_LOG.lock() {
         if !log.is_empty() {
-            println!(" {}", "Recent:".bold());
+            println!(" {}", "Last turn:".bold());
             for entry in log.iter() {
                 println!("   · {}", entry.dimmed());
             }
@@ -203,7 +207,7 @@ fn bench_card_lines(slot: &PokemonSlot, db: &CardDb) -> Vec<String> {
         lines.push(box_line("No energy", w));
     }
     if !status.is_empty() {
-        lines.push(box_line_colored(&status, w));
+        lines.push(box_line(&status, w));
     } else {
         lines.push(box_line("", w));
     }
@@ -266,7 +270,7 @@ fn active_card_lines(slot: &PokemonSlot, db: &CardDb, is_you: bool) -> Vec<Strin
             " ".repeat(gap + 1),
             status
         );
-        lines.push(box_line_raw(&combined, w));
+        lines.push(box_line(&combined, w));
     } else {
         lines.push(box_line(&energy_display, w));
     }
@@ -350,20 +354,6 @@ fn box_line(text: &str, w: usize) -> String {
     format!("║{}{}║", text, " ".repeat(pad))
 }
 
-/// Like box_line but `text` may contain ANSI codes (coloured status badges).
-fn box_line_colored(text: &str, w: usize) -> String {
-    // text may include ANSI escapes; use visible_len for padding.
-    let vlen = visible_len(text);
-    let pad  = if vlen < w { w - vlen } else { 0 };
-    format!("║{}{}║", text, " ".repeat(pad))
-}
-
-/// Accept a pre-built raw string that already has correct visible width.
-fn box_line_raw(text: &str, w: usize) -> String {
-    let vlen = visible_len(text);
-    let pad  = if vlen < w { w - vlen } else { 0 };
-    format!("║{}{}║", text, " ".repeat(pad))
-}
 
 // ------------------------------------------------------------------ //
 // Formatting helpers
@@ -426,6 +416,9 @@ pub fn element_emoji(el: Element) -> &'static str {
 // ------------------------------------------------------------------ //
 
 /// Visible character width: emoji = 2, ASCII = 1; strips ANSI sequences.
+///
+/// Variation selectors (U+FE00–U+FE0F) are invisible modifiers — e.g. ⚙️ is
+/// U+2699 + U+FE0F. The selector has no column width so we assign it 0.
 fn visible_len(s: &str) -> usize {
     let mut len = 0usize;
     let mut in_esc = false;
@@ -435,7 +428,14 @@ fn visible_len(s: &str) -> usize {
             if ch == 'm' { in_esc = false; }
             continue;
         }
-        len += if (ch as u32) > 127 { 2 } else { 1 };
+        let cp = ch as u32;
+        len += if (0xFE00..=0xFE0F).contains(&cp) {
+            0 // variation selector — zero display width
+        } else if cp > 127 {
+            2 // emoji / CJK etc.
+        } else {
+            1
+        };
     }
     len
 }

@@ -715,7 +715,10 @@
       {
         "name": "Illuminate",
         "effect": "Once during your turn, you may put a random Pokémon from your deck into your hand.",
-        "handler": "search_deck_random_pokemon"
+        "handler": "search_deck_random_pokemon",
+        "legal": [
+          "own_deck_has_pokemon"
+        ]
       }
     ],
     "evolvesFrom": "Morelull",
@@ -1670,7 +1673,11 @@
       {
         "name": "Ultra Thrusters",
         "effect": "Once during your turn, you may switch your Active Ultra Beast with 1 of your Benched Ultra Beasts.",
-        "handler": "switch_ultra_beast"
+        "handler": "switch_ultra_beast",
+        "legal": [
+          "active_is_subtype(subtype=Ultra Beast)",
+          "own_bench_subtype(subtype=Ultra Beast)"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -1780,7 +1787,10 @@
       {
         "name": "Gladion",
         "effect": "Put 1 random Type: Null or Silvally from your deck into your hand.",
-        "handler": "search_deck_named(names=(Type: Null, Silvally))"
+        "handler": "search_deck_named(names=(Type: Null, Silvally))",
+        "legal": [
+          "own_deck_has_named(names=Type: Null,Silvally)"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -1824,7 +1834,12 @@
       {
         "name": "Lusamine",
         "effect": "You can use this card only if your opponent has gotten at least 1 point. Choose 1 of your Ultra Beasts. Attach 2 random Energy from your discard pile to that Pokémon.",
-        "handler": "lusamine_attach"
+        "handler": "lusamine_attach",
+        "legal": [
+          "opp_points_at_least(count=1)",
+          "own_in_play_subtype(subtype=Ultra Beast)",
+          "own_energy_discard_at_least(count=2)"
+        ]
       }
     ],
     "evolvesFrom": null,

@@ -210,7 +210,7 @@ pub fn coin_flip_bonus_or_self_damage(
 /// Set `prevent_damage_next_turn = true` on the acting player's active slot.
 pub fn prevent_damage_next_turn(state: &mut GameState, ctx: &EffectContext) {
     if let Some(slot) = state.players[ctx.acting_player].active.as_mut() {
-        slot.prevent_damage_next_turn = true;
+        slot.prevent_damage_next_turn_incoming = true;
     }
 }
 
@@ -222,7 +222,7 @@ pub fn reduce_opponent_attack_damage(
     ctx: &EffectContext,
 ) {
     if let Some(slot) = state.players[ctx.acting_player].active.as_mut() {
-        slot.incoming_damage_reduction = amount as i8;
+        slot.incoming_damage_reduction_incoming = amount as i8;
     }
 }
 
@@ -370,9 +370,9 @@ mod tests {
     fn test_prevent_damage_next_turn_sets_flag() {
         let mut state = make_state();
         let c = ctx(0);
-        assert!(!state.players[0].active.as_ref().unwrap().prevent_damage_next_turn);
+        assert!(!state.players[0].active.as_ref().unwrap().prevent_damage_next_turn_incoming);
         prevent_damage_next_turn(&mut state, &c);
-        assert!(state.players[0].active.as_ref().unwrap().prevent_damage_next_turn);
+        assert!(state.players[0].active.as_ref().unwrap().prevent_damage_next_turn_incoming);
     }
 
     // --- prevent_damage_next_turn does not affect opponent ---
@@ -381,7 +381,7 @@ mod tests {
         let mut state = make_state();
         let c = ctx(0);
         prevent_damage_next_turn(&mut state, &c);
-        assert!(!state.players[1].active.as_ref().unwrap().prevent_damage_next_turn);
+        assert!(!state.players[1].active.as_ref().unwrap().prevent_damage_next_turn_incoming);
     }
 
     // --- damage_all_opponent_bench deals to all bench slots ---
@@ -439,7 +439,7 @@ mod tests {
         let c = ctx(0);
         reduce_opponent_attack_damage(&mut state, 20, &c);
         assert_eq!(
-            state.players[0].active.as_ref().unwrap().incoming_damage_reduction,
+            state.players[0].active.as_ref().unwrap().incoming_damage_reduction_incoming,
             20
         );
     }

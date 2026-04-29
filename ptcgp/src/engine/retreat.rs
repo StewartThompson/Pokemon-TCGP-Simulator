@@ -53,6 +53,16 @@ pub fn retreat(state: &mut GameState, db: &CardDb, bench_slot: usize) {
 
     let active_card_idx = active.card_idx;
     let active_card = db.get_by_idx(active_card_idx);
+    // Sentinel: card.rs sets retreat_cost = u8::MAX for "can't retreat" Pokémon.
+    // legal_actions filters Retreat in this case, but a buggy agent could still
+    // submit one — return gracefully instead of panicking the simulator.
+    if active_card.retreat_cost == u8::MAX {
+        eprintln!(
+            "warning: retreat blocked — Pokémon '{}' has retreat_cost == u8::MAX (cannot retreat)",
+            active_card.name
+        );
+        return;
+    }
     // Tool passive: check for retreat cost reduction (e.g. Inflatable Boat).
     let tool_reduction: i8 = active.tool_idx
         .and_then(|tidx| db.try_get_by_idx(tidx))
@@ -109,9 +119,11 @@ pub fn retreat(state: &mut GameState, db: &CardDb, bench_slot: usize) {
         }
         // Discard the first `retreat_cost` tokens from the shuffled list.
         let discarded = &shuffled[..cost];
-        let active_slot = state.players[current].active.as_mut().unwrap();
+        let player = &mut state.players[current];
+        let active_slot = player.active.as_mut().unwrap();
         for &el in discarded {
             active_slot.remove_energy(el, 1);
+            player.energy_discard[el as usize] += 1;
         }
     }
 
@@ -131,10 +143,10 @@ pub fn retreat(state: &mut GameState, db: &CardDb, bench_slot: usize) {
     state.players[current].active = new_active;
     state.players[current].bench[bench_slot] = old_active;
 
-    // Clear status from newly promoted active as well (matches Python "clear both" behaviour).
-    if let Some(ref mut slot) = state.players[current].active {
-        slot.clear_status();
-    }
+    // NOTE (Bug 4 fix): We deliberately do NOT clear status on the newly
+    // promoted active.  Per RULES.md §5 only the *retreating* Pokémon has its
+    // status effects removed.  The Pokémon coming up from the bench keeps any
+    // legitimate statuses it had while benched.
 
     state.players[current].has_retreated = true;
 }
@@ -228,5 +240,140 @@ mod tests {
         let (mut state, _bulb_idx3) = make_state_for_retreat(&db);
         state.players[0].active.as_mut().unwrap().add_status(StatusEffect::Paralyzed);
         retreat(&mut state, &db, 0);
+    }
+
+    // -- u8::MAX retreat_cost sentinel: cannot retreat even with abundant energy --
+    // The function returns gracefully (no panic) and leaves state untouched so
+    // a buggy agent doesn't crash the simulator.
+    #[test]
+    fn retreat_max_cost_no_op_even_with_energy() {
+        use crate::card::Card;
+        use crate::types::{CardKind, Stage};
+
+        // Build a synthetic card with retreat_cost = u8::MAX.
+        let card = Card {
+            id: "test-noretreat".to_string(),
+            idx: 0,
+            name: "NoRetreatMon".to_string(),
+            kind: CardKind::Pokemon,
+            stage: Some(Stage::Basic),
+            element: Some(Element::Grass),
+            hp: 100,
+            weakness: None,
+            retreat_cost: u8::MAX,
+            is_ex: false,
+            is_mega_ex: false,
+            evolves_from: None,
+            attacks: vec![],
+            ability: None,
+            trainer_effect_text: String::new(),
+            trainer_handler: String::new(),
+            trainer_effects: vec![],
+            trainer_legal_conditions: vec![],
+            ko_points: 1,
+        };
+        let mut db = CardDb::new_empty();
+        db.id_to_idx.insert(card.id.clone(), 0u16);
+        db.name_to_indices.insert(card.name.clone(), vec![0u16]);
+        db.cards.push(card);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Main;
+        let mut active = PokemonSlot::new(0, 100);
+        // Give it a huge amount of energy so the only blocker is the sentinel.
+        active.add_energy(Element::Grass, 8);
+        state.players[0].active = Some(active);
+        state.players[0].bench[0] = Some(PokemonSlot::new(0, 100));
+
+        // Should not panic. Should leave state unchanged (no swap, no energy spent).
+        retreat(&mut state, &db, 0);
+        assert!(
+            !state.players[0].has_retreated,
+            "retreat() with sentinel cost should be a no-op (no has_retreated flip)"
+        );
+        assert_eq!(
+            state.players[0].active.as_ref().unwrap().total_energy(),
+            8,
+            "retreat() with sentinel cost should not consume energy"
+        );
+        assert_eq!(
+            state.players[0].active.as_ref().unwrap().card_idx, 0,
+            "retreat() with sentinel cost should not swap active and bench"
+        );
+    }
+
+    #[test]
+    fn legal_actions_emits_no_retreat_when_cost_is_max() {
+        use crate::card::Card;
+        use crate::engine::legal_actions::get_legal_actions;
+        use crate::types::{ActionKind, CardKind, Stage};
+
+        let card = Card {
+            id: "test-noretreat-la".to_string(),
+            idx: 0,
+            name: "NoRetreatMon".to_string(),
+            kind: CardKind::Pokemon,
+            stage: Some(Stage::Basic),
+            element: Some(Element::Grass),
+            hp: 100,
+            weakness: None,
+            retreat_cost: u8::MAX,
+            is_ex: false,
+            is_mega_ex: false,
+            evolves_from: None,
+            attacks: vec![],
+            ability: None,
+            trainer_effect_text: String::new(),
+            trainer_handler: String::new(),
+            trainer_effects: vec![],
+            trainer_legal_conditions: vec![],
+            ko_points: 1,
+        };
+        let mut db = CardDb::new_empty();
+        db.id_to_idx.insert(card.id.clone(), 0u16);
+        db.name_to_indices.insert(card.name.clone(), vec![0u16]);
+        db.cards.push(card);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Main;
+        state.turn_number = 5;
+        let mut active = PokemonSlot::new(0, 100);
+        active.add_energy(Element::Grass, 8);
+        state.players[0].active = Some(active);
+        state.players[0].bench[0] = Some(PokemonSlot::new(0, 100));
+
+        let actions = get_legal_actions(&state, &db);
+        assert!(
+            !actions.iter().any(|a| a.kind == ActionKind::Retreat),
+            "Should emit no Retreat action when retreat_cost == u8::MAX"
+        );
+    }
+
+    // -- Bug 4: status on the bench Pokemon must be preserved after retreat --
+    #[test]
+    fn retreat_preserves_status_on_promoted_active() {
+        let db = load_db();
+        let (mut state, _bulb_idx) = make_state_for_retreat(&db);
+        // Apply a (legitimate) status effect to the bench Pokémon before retreat.
+        state.players[0].bench[0].as_mut().unwrap().add_status(StatusEffect::Poisoned);
+
+        retreat(&mut state, &db, 0);
+
+        // After retreat the previously-benched Pokémon is now active and
+        // should STILL carry its Poisoned status (Bug 4: previous code
+        // incorrectly cleared status on the newly promoted active).
+        let new_active = state.players[0].active.as_ref().unwrap();
+        assert!(
+            new_active.has_status(StatusEffect::Poisoned),
+            "Newly promoted active should keep its bench-side status (Bug 4 fix)"
+        );
+
+        // The retreating Pokémon (now on bench) should have its statuses
+        // cleared (rules of retreat).
+        let retreated = state.players[0].bench[0].as_ref().unwrap();
+        assert!(
+            !retreated.has_any_status(),
+            "Retreating Pokémon should have all statuses removed"
+        );
     }
 }

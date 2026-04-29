@@ -3681,7 +3681,10 @@
       {
         "name": "Psy Shadow",
         "effect": "Once during your turn, you may take 1 Psychic Energy from your Energy Zone and attach it to the Psychic Pokémon in the Active Spot.",
-        "handler": "attach_energy_zone_self(count=1, energy_type=Psychic)"
+        "handler": "attach_energy_zone_self(count=1, energy_type=Psychic)",
+        "legal": [
+          "active_is_element(element=Psychic)"
+        ]
       }
     ],
     "evolvesFrom": "Kirlia",
@@ -5933,28 +5936,44 @@
         "effect": "Heal 50 damage from 1 of your Grass Pokemon.",
         "position": "pHand",
         "target": "pActive",
-        "handler": "heal_grass_target(amount=50)"
+        "handler": "heal_grass_target(amount=50)",
+        "legal": [
+          "own_in_play_damaged(element=Grass)",
+          "heal_own_target(element=Grass)"
+        ]
       },
       {
         "name": "Supporter",
         "effect": "Heal 50 damage from 1 of your Grass Pokemon.",
         "position": "pHand",
         "target": "pBench1",
-        "handler": "heal_grass_target(amount=50)"
+        "handler": "heal_grass_target(amount=50)",
+        "legal": [
+          "own_in_play_damaged(element=Grass)",
+          "heal_own_target(element=Grass)"
+        ]
       },
       {
         "name": "Supporter",
         "effect": "Heal 50 damage from 1 of your Grass Pokemon.",
         "position": "pHand",
         "target": "pBench2",
-        "handler": "heal_grass_target(amount=50)"
+        "handler": "heal_grass_target(amount=50)",
+        "legal": [
+          "own_in_play_damaged(element=Grass)",
+          "heal_own_target(element=Grass)"
+        ]
       },
       {
         "name": "Supporter",
         "effect": "Heal 50 damage from 1 of your Grass Pokemon.",
         "position": "pHand",
         "target": "pBench3",
-        "handler": "heal_grass_target(amount=50)"
+        "handler": "heal_grass_target(amount=50)",
+        "legal": [
+          "own_in_play_damaged(element=Grass)",
+          "heal_own_target(element=Grass)"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -5978,28 +5997,44 @@
         "effect": "Choose 1 of your Water Pokemon, and flip a coin until you get tails. For each heads, take a Water Energy from your Energy Zone and attach it to that Pokemon. (Active)",
         "position": "pHand",
         "target": "pActive",
-        "handler": "coin_flip_until_tails_attach_energy(energy_type=Water, element_filter=Water)"
+        "handler": "coin_flip_until_tails_attach_energy(energy_type=Water, element_filter=Water)",
+        "legal": [
+          "own_in_play_element(element=Water)",
+          "own_pokemon_target(element=Water)"
+        ]
       },
       {
         "name": "Supporter",
         "effect": "Choose 1 of your Water Pokemon, and flip a coin until you get tails. For each heads, take a Water Energy from your Energy Zone and attach it to that Pokemon. (Bench 1)",
         "position": "pHand",
         "target": "pBench1",
-        "handler": "coin_flip_until_tails_attach_energy(energy_type=Water, element_filter=Water)"
+        "handler": "coin_flip_until_tails_attach_energy(energy_type=Water, element_filter=Water)",
+        "legal": [
+          "own_in_play_element(element=Water)",
+          "own_pokemon_target(element=Water)"
+        ]
       },
       {
         "name": "Supporter",
         "effect": "Choose 1 of your Water Pokemon, and flip a coin until you get tails. For each heads, take a Water Energy from your Energy Zone and attach it to that Pokemon. (Bench 2)",
         "position": "pHand",
         "target": "pBench2",
-        "handler": "coin_flip_until_tails_attach_energy(energy_type=Water, element_filter=Water)"
+        "handler": "coin_flip_until_tails_attach_energy(energy_type=Water, element_filter=Water)",
+        "legal": [
+          "own_in_play_element(element=Water)",
+          "own_pokemon_target(element=Water)"
+        ]
       },
       {
         "name": "Supporter",
         "effect": "Choose 1 of your Water Pokemon, and flip a coin until you get tails. For each heads, take a Water Energy from your Energy Zone and attach it to that Pokemon. (Bench 3)",
         "position": "pHand",
         "target": "pBench3",
-        "handler": "coin_flip_until_tails_attach_energy(energy_type=Water, element_filter=Water)"
+        "handler": "coin_flip_until_tails_attach_energy(energy_type=Water, element_filter=Water)",
+        "legal": [
+          "own_in_play_element(element=Water)",
+          "own_pokemon_target(element=Water)"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -6146,7 +6181,10 @@
         "effect": "Switch out your opponent’s Active Pokemon to the Bench. (Your opponent chooses the new Active Pokemon.) (Active)",
         "position": "pHand",
         "target": "oActive",
-        "handler": "switch_opponent_active"
+        "handler": "switch_opponent_active",
+        "legal": [
+          "opp_bench_at_least(count=1)"
+        ]
       }
     ],
     "evolvesFrom": null,

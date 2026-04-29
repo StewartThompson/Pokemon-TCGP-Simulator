@@ -24,11 +24,11 @@ pub fn create_game(
     let _ = db; // db not needed at creation, but kept for API symmetry
     let mut state = GameState::new(seed);
 
-    state.players[0].deck = deck1;
-    state.players[0].energy_types = energy_types1;
+    state.players[0].deck = deck1.into();
+    state.players[0].energy_types = energy_types1.into();
 
-    state.players[1].deck = deck2;
-    state.players[1].energy_types = energy_types2;
+    state.players[1].deck = deck2.into();
+    state.players[1].energy_types = energy_types2.into();
 
     state.phase = GamePhase::Setup;
     state
@@ -47,7 +47,7 @@ fn draw_opening_hand_for_player(state: &mut GameState, db: &CardDb, player_idx: 
     loop {
         state.players[player_idx].deck.shuffle(&mut state.rng);
 
-        let hand: Vec<u16> = state.players[player_idx].deck
+        let hand: smallvec::SmallVec<[u16; 12]> = state.players[player_idx].deck
             .drain(..INITIAL_HAND_SIZE.min(state.players[player_idx].deck.len()))
             .collect();
 
@@ -60,7 +60,7 @@ fn draw_opening_hand_for_player(state: &mut GameState, db: &CardDb, player_idx: 
         }
 
         // No basic — return hand to front of deck and retry.
-        let mut deck = hand;
+        let mut deck: smallvec::SmallVec<[u16; 20]> = hand.into_iter().collect();
         deck.extend(state.players[player_idx].deck.drain(..));
         state.players[player_idx].deck = deck;
         state.players[player_idx].hand.clear();

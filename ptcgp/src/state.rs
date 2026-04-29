@@ -1,5 +1,6 @@
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
+use smallvec::SmallVec;
 use crate::types::{EnergyArray, Element, GamePhase, StatusEffect, energy_get, energy_add, energy_sub, energy_total};
 use crate::actions::SlotRef;
 
@@ -18,11 +19,25 @@ pub struct PokemonSlot {
     pub tool_idx: Option<u16>,
     pub evolved_this_turn: bool,
     pub ability_used_this_turn: bool,
+    // Two-phase next-turn flags:
+    //   *_next_turn       = "active" this turn (readers consult these)
+    //   *_next_turn_incoming = pending; set by effect handlers, promoted to the
+    //                          non-_incoming field at start_turn of the affected
+    //                          player, and cleared at end_turn of that same player.
+    // Existing field names (no suffix) continue to be the "active" version so
+    // readers (attack.rs, legal_actions.rs, agents/mod.rs, retreat.rs) keep
+    // working unchanged.  Handler call sites will be updated separately to
+    // write to the `_incoming` siblings.
     pub cant_attack_next_turn: bool,
+    pub cant_attack_next_turn_incoming: bool,
     pub cant_retreat_next_turn: bool,
+    pub cant_retreat_next_turn_incoming: bool,
     pub prevent_damage_next_turn: bool,
+    pub prevent_damage_next_turn_incoming: bool,
     pub incoming_damage_reduction: i8,
+    pub incoming_damage_reduction_incoming: i8,
     pub attack_bonus_next_turn_self: i8,
+    pub attack_bonus_next_turn_self_incoming: i8,
 }
 
 impl PokemonSlot {
@@ -38,10 +53,15 @@ impl PokemonSlot {
             evolved_this_turn: false,
             ability_used_this_turn: false,
             cant_attack_next_turn: false,
+            cant_attack_next_turn_incoming: false,
             cant_retreat_next_turn: false,
+            cant_retreat_next_turn_incoming: false,
             prevent_damage_next_turn: false,
+            prevent_damage_next_turn_incoming: false,
             incoming_damage_reduction: 0,
+            incoming_damage_reduction_incoming: 0,
             attack_bonus_next_turn_self: 0,
+            attack_bonus_next_turn_self_incoming: 0,
         }
     }
 
@@ -99,11 +119,17 @@ impl PokemonSlot {
 pub struct PlayerState {
     pub active: Option<PokemonSlot>,
     pub bench: [Option<PokemonSlot>; 3],
-    pub hand: Vec<u16>,
-    pub deck: Vec<u16>,
-    pub discard: Vec<u16>,
+    pub hand: SmallVec<[u16; 12]>,
+    pub deck: SmallVec<[u16; 20]>,
+    pub discard: SmallVec<[u16; 20]>,
+    /// Energies that have been removed from this player's Pokémon (by attacks
+    /// that discard energy, by KO, or by retreat) and are now "in the discard
+    /// pile".  PTCGP doesn't have energy cards, so this is the only way a
+    /// card like Flame Patch ("attach a Fire Energy from your discard pile")
+    /// can find energy to recycle.  Indexed by `Element as usize`.
+    pub energy_discard: crate::types::EnergyArray,
     pub points: u8,
-    pub energy_types: Vec<Element>,
+    pub energy_types: SmallVec<[Element; 4]>,
     pub energy_available: Option<Element>,
     // Per-turn flags
     pub has_attached_energy: bool,
@@ -111,10 +137,13 @@ pub struct PlayerState {
     pub has_retreated: bool,
     // Turn-scoped buffs
     pub attack_damage_bonus: i8,
-    pub attack_damage_bonus_names: Vec<String>,
+    pub attack_damage_bonus_names: SmallVec<[String; 2]>,
     pub retreat_cost_modifier: i8,
     pub cant_play_supporter_this_turn: bool,
     pub cant_play_supporter_incoming: bool,
+    /// Set by `PassiveNoHealing` (e.g. Claydol "Heal Block").  When true, healing
+    /// effects on this player's Pokémon are no-ops.  Reset each start_turn.
+    pub cant_heal_this_turn: bool,
     /// Set by opponent_no_items_next_turn; promoted at start of the opponent's next turn.
     pub cant_play_items_incoming: bool,
     pub cant_play_items_this_turn: bool,
@@ -123,6 +152,10 @@ pub struct PlayerState {
     pub cant_attach_energy_this_turn: bool,
     /// Extra poison damage taken per between-turns checkup (from Nihilego More Poison).
     pub extra_poison_damage: i16,
+    /// Set when this player's active Pokemon was KO'd and they still need to
+    /// promote a bench Pokemon to the active slot.  Used to support
+    /// simultaneous KOs of both players' actives (Bug 3).
+    pub needs_promotion: bool,
 }
 
 impl Default for PlayerState {
@@ -130,25 +163,28 @@ impl Default for PlayerState {
         Self {
             active: None,
             bench: [None, None, None],
-            hand: Vec::new(),
-            deck: Vec::new(),
-            discard: Vec::new(),
+            hand: SmallVec::new(),
+            deck: SmallVec::new(),
+            discard: SmallVec::new(),
+            energy_discard: [0; 8],
             points: 0,
-            energy_types: Vec::new(),
+            energy_types: SmallVec::new(),
             energy_available: None,
             has_attached_energy: false,
             has_played_supporter: false,
             has_retreated: false,
             attack_damage_bonus: 0,
-            attack_damage_bonus_names: Vec::new(),
+            attack_damage_bonus_names: SmallVec::new(),
             retreat_cost_modifier: 0,
             cant_play_supporter_this_turn: false,
             cant_play_supporter_incoming: false,
+            cant_heal_this_turn: false,
             cant_play_items_incoming: false,
             cant_play_items_this_turn: false,
             cant_attach_energy_incoming: false,
             cant_attach_energy_this_turn: false,
             extra_poison_damage: 0,
+            needs_promotion: false,
         }
     }
 }
@@ -212,6 +248,11 @@ pub struct GameState {
     /// Drained and displayed by the runner after each action in human-play mode.
     /// Ignored (left empty) in tournament simulations.
     pub coin_flip_log: Vec<String>,
+    /// True when an attack KO'd the defender's Active and put the game into
+    /// `AwaitingBenchPromotion`.  After the defender promotes, the runner /
+    /// MCTS advances the turn (an attack always ends the attacker's turn,
+    /// even when promotion intervenes).  Cleared inside `advance_turn`.
+    pub attack_pending_advance: bool,
 }
 
 impl GameState {
@@ -225,6 +266,7 @@ impl GameState {
             winner: None,
             rng: SmallRng::seed_from_u64(seed),
             coin_flip_log: Vec::new(),
+            attack_pending_advance: false,
         }
     }
 

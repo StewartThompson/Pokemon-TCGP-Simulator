@@ -15,7 +15,11 @@
       {
         "name": "Heal",
         "effect": "Heal 20 damage from 1 of your Pokémon.",
-        "handler": "heal_target(amount=20)"
+        "handler": "heal_target(amount=20)",
+        "legal": [
+          "own_in_play_damaged",
+          "heal_own_target"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -37,7 +41,10 @@
       {
         "name": "X Speed",
         "effect": "During this turn, the Retreat Cost of your Active Pokémon is -1.",
-        "handler": "reduce_retreat_cost(1)"
+        "handler": "reduce_retreat_cost(1)",
+        "legal": [
+          "active_retreat_cost_at_least(amount=1)"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -103,7 +110,10 @@
       {
         "name": "Draw basic Pokémon",
         "effect": "Draw 1 basic Pokémon card.",
-        "handler": "draw_basic_pokemon()"
+        "handler": "draw_basic_pokemon()",
+        "legal": [
+          "own_deck_has_basic"
+        ]
       }
     ],
     "evolvesFrom": null,
@@ -125,7 +135,10 @@
       {
         "name": "Red Card",
         "effect": "Your opponent shuffles their hand into their deck and draws 3 cards.",
-        "handler": "opponent_shuffle_hand_draw(count=3)"
+        "handler": "opponent_shuffle_hand_draw(count=3)",
+        "legal": [
+          "opp_hand_at_least(count=3)"
+        ]
       }
     ],
     "evolvesFrom": null,

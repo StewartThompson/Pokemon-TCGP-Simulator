@@ -81,7 +81,13 @@ pub fn apply_action(state: &mut GameState, db: &CardDb, action: &Action) {
 
         ActionKind::Attack => {
             let attack_index = action.attack_index.expect("Attack requires attack_index");
-            attack::execute_attack(state, db, attack_index, action.target);
+            attack::execute_attack(state, db, attack_index, action.target, action.extra_target);
+            // NOTE: turn advancement is NOT done here. The caller (runner.rs or
+            // mcts::apply_and_settle) handles check_and_handle_kos and then
+            // advance_turn AFTER this returns.  Doing it here caused a double
+            // advance: mutations would flip the turn, then the caller would flip
+            // it back, giving the attacker a free extra turn and corrupting the
+            // energy/flag state — ultimately triggering "cannot pay cost" panics.
         }
 
         ActionKind::EndTurn => {
@@ -126,8 +132,8 @@ mod tests {
         state.turn_number = 0;
         state.players[0].active = Some(PokemonSlot::new(bulb.idx, bulb.hp));
         state.players[1].active = Some(PokemonSlot::new(bulb.idx, bulb.hp));
-        state.players[0].energy_types = vec![Element::Grass];
-        state.players[1].energy_types = vec![Element::Grass];
+        state.players[0].energy_types = smallvec::smallvec![Element::Grass];
+        state.players[1].energy_types = smallvec::smallvec![Element::Grass];
         state
     }
 

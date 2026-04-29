@@ -17,6 +17,61 @@ use crate::ui::element_emoji;
 // Public API
 // ------------------------------------------------------------------ //
 
+/// How loudly to narrate the game and how long to pause between events.
+///
+/// Currently derived from `human_player`: `Some(_) → Normal`, `None → Off`.
+/// Exposed publicly so future callers (replays, demos, slow-motion debugging)
+/// can override it without breaking the existing `run_game` signature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NarrationSpeed {
+    /// No narration, no sleeps. Used for headless batch runs / tests.
+    Off,
+    /// Narrate but minimise pauses (~half of Normal).
+    Fast,
+    /// Default human-friendly cadence — coin flips ~1.4s, action redraw ~0.9s.
+    Normal,
+    /// Slow narration for demos or accessibility (~double of Normal).
+    Slow,
+}
+
+impl NarrationSpeed {
+    /// Pause to take between narrated events (e.g. coin-flip log).
+    fn coin_flip_pause(self) -> std::time::Duration {
+        use std::time::Duration;
+        match self {
+            NarrationSpeed::Off => Duration::from_millis(0),
+            NarrationSpeed::Fast => Duration::from_millis(700),
+            NarrationSpeed::Normal => Duration::from_millis(1400),
+            NarrationSpeed::Slow => Duration::from_millis(2800),
+        }
+    }
+    /// Pause after redrawing the board between AI actions.
+    fn action_pause(self) -> std::time::Duration {
+        use std::time::Duration;
+        match self {
+            NarrationSpeed::Off => Duration::from_millis(0),
+            NarrationSpeed::Fast => Duration::from_millis(450),
+            NarrationSpeed::Normal => Duration::from_millis(900),
+            NarrationSpeed::Slow => Duration::from_millis(1800),
+        }
+    }
+    /// No-op convenience wrapper so callers can `speed.sleep(speed.action_pause())`.
+    fn sleep(self, dur: std::time::Duration) {
+        if self != NarrationSpeed::Off && dur.as_millis() > 0 {
+            std::thread::sleep(dur);
+        }
+    }
+}
+
+/// Default narration speed derived from whether a human is playing.
+fn default_narration_speed(human_player: Option<usize>) -> NarrationSpeed {
+    if human_player.is_some() {
+        NarrationSpeed::Normal
+    } else {
+        NarrationSpeed::Off
+    }
+}
+
 /// Result of a completed game.
 #[derive(Debug, Clone)]
 pub struct GameResult {
@@ -108,8 +163,17 @@ fn run_setup_phase(
 
         let agent: &dyn Agent = if player_idx == 0 { agent0 } else { agent1 };
         let action = agent.select_action(state, db, player_idx);
-        let hand_idx = action.hand_index
-            .unwrap_or_else(|| legal[0].hand_index.unwrap_or(0));
+
+        // Validate hand_idx: must be in bounds AND match a legal action's hand
+        // index. If invalid, fall back to the first legal action's hand index.
+        let legal_hand_indices: std::collections::HashSet<usize> = legal.iter()
+            .filter_map(|a| a.hand_index)
+            .collect();
+        let proposed = action.hand_index;
+        let hand_idx = match proposed {
+            Some(i) if i < state.players[player_idx].hand.len() && legal_hand_indices.contains(&i) => i,
+            _ => legal[0].hand_index.unwrap_or(0),
+        };
         setup::apply_setup_placement(state, db, player_idx, hand_idx, &[]);
 
         // Step 2 — optionally place bench Basics.
@@ -139,6 +203,18 @@ fn run_setup_bench_phase(
         match action.kind {
             ActionKind::EndTurn => break,
             ActionKind::PlayCard => {
+                // Validate against the set of legal placements before mutating
+                // state directly, so an agent can't bypass setup rules (e.g.
+                // place a non-Basic, place into an occupied slot, or use an
+                // out-of-range hand index).
+                let is_legal = options.iter().any(|a| {
+                    a.kind == ActionKind::PlayCard
+                        && a.hand_index == action.hand_index
+                        && a.target == action.target
+                });
+                if !is_legal {
+                    break;
+                }
                 let hand_idx = match action.hand_index {
                     Some(i) => i,
                     None => break,
@@ -147,7 +223,14 @@ fn run_setup_bench_phase(
                     Some(t) if t.is_bench() => t.bench_index(),
                     _ => break,
                 };
+                // Defence-in-depth: re-check bounds (legal_actions should have
+                // guaranteed these, but mutations should still be safe).
                 if hand_idx >= state.players[player_idx].hand.len() {
+                    break;
+                }
+                if bench_slot >= state.players[player_idx].bench.len()
+                    || state.players[player_idx].bench[bench_slot].is_some()
+                {
                     break;
                 }
                 let card_idx = state.players[player_idx].hand[hand_idx];
@@ -182,6 +265,8 @@ fn run_main_loop(
 
     // Track whose turn it was last time we checked, so we can print turn headers.
     let mut last_printed_player: Option<usize> = None;
+    // Narration speed is constant for the lifetime of the game — compute once.
+    let narration = default_narration_speed(human_player);
 
     loop {
         steps += 1;
@@ -206,20 +291,49 @@ fn run_main_loop(
 
             GamePhase::AwaitingBenchPromotion => {
                 // The player whose active is None must promote a bench Pokemon.
-                let promoting_player = find_promotion_player(state);
+                let promoting_player = match find_promotion_player(state) {
+                    Some(p) => p,
+                    None => {
+                        eprintln!(
+                            "warning: AwaitingBenchPromotion phase but no player needs to promote (turn {}); ending game as a draw",
+                            state.turn_number,
+                        );
+                        debug_assert!(false, "find_promotion_player could not identify a player");
+                        crate::ui::push_event(
+                            "Engine inconsistency: no promotion candidate. Ending as draw.".to_string(),
+                        );
+                        state.winner = Some(-1);
+                        break;
+                    }
+                };
                 let agent: &dyn Agent = if promoting_player == 0 { agent0 } else { agent1 };
                 let action = agent.select_action(state, db, promoting_player);
                 // apply_action dispatches Promote → ko::promote_bench
                 mutations::apply_action(state, db, &action);
                 // After promotion phase returns to Main (or GameOver).
+                //
+                // If the promotion was caused by an attack (flag set in
+                // execute_attack), the attacker's turn must end now — an
+                // attack always ends the turn, even when bench promotion
+                // intervenes.  Without this, the attacker would get to keep
+                // acting after the defender promoted.
+                if state.attack_pending_advance
+                    && state.phase == GamePhase::Main
+                    && state.winner.is_none()
+                {
+                    turn::advance_turn(state, db);
+                    last_printed_player = None;
+                }
             }
 
             GamePhase::Main => {
                 let current = state.current_player;
                 let is_ai = human_player.map_or(false, |hp| current != hp);
 
-                // Track turn switches (no extra print needed; the board redraws).
+                // On the first action of a new opponent turn, clear the log so only
+                // this turn's actions accumulate (shown as "Last turn:" on human's go).
                 if is_ai && last_printed_player != Some(current) {
+                    crate::ui::clear_event_log();
                     last_printed_player = Some(current);
                 }
 
@@ -246,13 +360,22 @@ fn run_main_loop(
                 state.coin_flip_log.clear();
                 mutations::apply_action(state, db, &action);
 
-                // Show coin flip results (if any) for both human and AI turns.
+                // Show coin flip results (if any).
                 if human_player.is_some() && !state.coin_flip_log.is_empty() {
-                    println!();
-                    for flip in &state.coin_flip_log {
-                        println!("  {}", flip);
+                    if is_ai {
+                        // Opponent's flip — push into the event log so it appears
+                        // in "Last turn:" indented under the action that caused it.
+                        for flip in &state.coin_flip_log {
+                            crate::ui::push_event(format!("  ↳ {}", flip));
+                        }
+                    } else {
+                        // Human's flip — print directly (board redraws after).
+                        println!();
+                        for flip in &state.coin_flip_log {
+                            println!("  {}", flip);
+                        }
+                        narration.sleep(narration.coin_flip_pause());
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(1400));
                     state.coin_flip_log.clear();
                 }
 
@@ -276,7 +399,7 @@ fn run_main_loop(
                     if let Some(hp) = human_player {
                         crate::ui::render_state(state, db, hp);
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(900));
+                    narration.sleep(narration.action_pause());
                 }
 
                 // When the AI ends its turn, reset the turn-header tracker so the next
@@ -364,7 +487,6 @@ fn narrate_action(state: &GameState, db: &CardDb, action: &Action, player_idx: u
                 CardKind::Item | CardKind::Supporter | CardKind::Tool => {
                     Some(format!("Played {}", card.name))
                 }
-                _ => Some(format!("Played {}", card.name)),
             }
         }
 
@@ -392,16 +514,18 @@ fn narrate_action(state: &GameState, db: &CardDb, action: &Action, player_idx: u
 /// Return the index (0 or 1) of the player who needs to promote a bench Pokemon.
 ///
 /// In `AwaitingBenchPromotion` the player whose active is `None` is the one
-/// who must promote.  Falls back to `current_player` if ambiguous.
-fn find_promotion_player(state: &GameState) -> usize {
+/// who must promote.  Returns `None` if no player needs to promote — this
+/// indicates the engine is in an inconsistent state and the caller should
+/// surface that rather than silently masking it with a current_player fallback.
+fn find_promotion_player(state: &GameState) -> Option<usize> {
     for i in 0..2 {
         if state.players[i].active.is_none()
             && state.players[i].bench.iter().any(|s| s.is_some())
         {
-            return i;
+            return Some(i);
         }
     }
-    state.current_player
+    None
 }
 
 // ------------------------------------------------------------------ //

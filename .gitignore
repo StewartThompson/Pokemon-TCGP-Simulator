@@ -43,3 +43,7 @@ models/
 # ── Misc ──────────────────────────────────────────────────────────────────────
 legacy/
 *.log
+logs_*.txt
+ptcgp/checkpoints*
+checkpoints*
+.claude

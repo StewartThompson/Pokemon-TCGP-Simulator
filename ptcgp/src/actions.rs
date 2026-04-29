@@ -55,47 +55,55 @@ pub struct Action {
     pub attack_index: Option<usize>,
     /// Secondary hand index — used by Rare Candy
     pub extra_hand_index: Option<usize>,
+    /// Secondary target slot — used by effects that pick two slots (e.g.
+    /// Manaphy "Choose 2 of your Benched Pokémon" attach_water_two_bench).
+    pub extra_target: Option<SlotRef>,
 }
 
 impl Action {
     pub fn end_turn() -> Self {
-        Self { kind: ActionKind::EndTurn, hand_index: None, target: None, attack_index: None, extra_hand_index: None }
+        Self { kind: ActionKind::EndTurn, hand_index: None, target: None, attack_index: None, extra_hand_index: None, extra_target: None }
     }
 
     pub fn attack(attack_index: usize, sub_target: Option<SlotRef>) -> Self {
-        Self { kind: ActionKind::Attack, hand_index: None, target: sub_target, attack_index: Some(attack_index), extra_hand_index: None }
+        Self { kind: ActionKind::Attack, hand_index: None, target: sub_target, attack_index: Some(attack_index), extra_hand_index: None, extra_target: None }
     }
 
     pub fn play_basic(hand_index: usize, bench_slot: SlotRef) -> Self {
-        Self { kind: ActionKind::PlayCard, hand_index: Some(hand_index), target: Some(bench_slot), attack_index: None, extra_hand_index: None }
+        Self { kind: ActionKind::PlayCard, hand_index: Some(hand_index), target: Some(bench_slot), attack_index: None, extra_hand_index: None, extra_target: None }
     }
 
     pub fn attach_energy(target: SlotRef) -> Self {
-        Self { kind: ActionKind::AttachEnergy, hand_index: None, target: Some(target), attack_index: None, extra_hand_index: None }
+        Self { kind: ActionKind::AttachEnergy, hand_index: None, target: Some(target), attack_index: None, extra_hand_index: None, extra_target: None }
     }
 
     pub fn evolve(hand_index: usize, target: SlotRef) -> Self {
-        Self { kind: ActionKind::Evolve, hand_index: Some(hand_index), target: Some(target), attack_index: None, extra_hand_index: None }
+        Self { kind: ActionKind::Evolve, hand_index: Some(hand_index), target: Some(target), attack_index: None, extra_hand_index: None, extra_target: None }
     }
 
     pub fn use_ability(target: SlotRef) -> Self {
-        Self { kind: ActionKind::UseAbility, hand_index: None, target: Some(target), attack_index: None, extra_hand_index: None }
+        Self { kind: ActionKind::UseAbility, hand_index: None, target: Some(target), attack_index: None, extra_hand_index: None, extra_target: None }
     }
 
     pub fn retreat(bench_target: SlotRef) -> Self {
-        Self { kind: ActionKind::Retreat, hand_index: None, target: Some(bench_target), attack_index: None, extra_hand_index: None }
+        Self { kind: ActionKind::Retreat, hand_index: None, target: Some(bench_target), attack_index: None, extra_hand_index: None, extra_target: None }
     }
 
     pub fn promote(slot: SlotRef) -> Self {
-        Self { kind: ActionKind::Promote, hand_index: None, target: Some(slot), attack_index: None, extra_hand_index: None }
+        Self { kind: ActionKind::Promote, hand_index: None, target: Some(slot), attack_index: None, extra_hand_index: None, extra_target: None }
     }
 
     pub fn play_item(hand_index: usize, target: Option<SlotRef>) -> Self {
-        Self { kind: ActionKind::PlayCard, hand_index: Some(hand_index), target, attack_index: None, extra_hand_index: None }
+        Self { kind: ActionKind::PlayCard, hand_index: Some(hand_index), target, attack_index: None, extra_hand_index: None, extra_target: None }
     }
 
     pub fn play_rare_candy(hand_index: usize, target: SlotRef, evo_hand_index: usize) -> Self {
-        Self { kind: ActionKind::PlayCard, hand_index: Some(hand_index), target: Some(target), attack_index: None, extra_hand_index: Some(evo_hand_index) }
+        Self { kind: ActionKind::PlayCard, hand_index: Some(hand_index), target: Some(target), attack_index: None, extra_hand_index: Some(evo_hand_index), extra_target: None }
+    }
+
+    /// Attack picking 2 own bench targets (e.g. Manaphy `attach_water_two_bench`).
+    pub fn attack_two_targets(attack_index: usize, target_a: SlotRef, target_b: SlotRef) -> Self {
+        Self { kind: ActionKind::Attack, hand_index: None, target: Some(target_a), attack_index: Some(attack_index), extra_hand_index: None, extra_target: Some(target_b) }
     }
 }
 
@@ -106,6 +114,7 @@ impl std::fmt::Display for Action {
         if let Some(ref t) = self.target { write!(f, " target={}", t)?; }
         if let Some(i) = self.attack_index { write!(f, " atk={}", i)?; }
         if let Some(e) = self.extra_hand_index { write!(f, " extra_hand={}", e)?; }
+        if let Some(ref t) = self.extra_target { write!(f, " extra_target={}", t)?; }
         write!(f, ")")
     }
 }

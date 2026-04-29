@@ -3,6 +3,7 @@ use std::path::Path;
 use serde::Deserialize;
 use crate::types::{CardKind, CostSymbol, Element, Stage};
 use crate::effects::{EffectKind, parse_handler_string};
+use crate::effects::legality::{LegalCondition, parse_legal_array};
 
 // -------------------------------------------------------------------------- //
 // Card structs
@@ -16,6 +17,10 @@ pub struct Attack {
     pub effect_text: String,
     pub handler: String,
     pub effects: Vec<EffectKind>,
+    /// Pre-parsed `legal` predicates from JSON.  Empty = always legal
+    /// (no preconditions, no target enumeration); evaluated by
+    /// `effects::legality::enumerate_legal_actions` at action-emit time.
+    pub legal_conditions: Vec<LegalCondition>,
 }
 
 #[derive(Clone, Debug)]
@@ -25,6 +30,7 @@ pub struct Ability {
     pub is_passive: bool,
     pub handler: String,
     pub effects: Vec<EffectKind>,
+    pub legal_conditions: Vec<LegalCondition>,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +52,9 @@ pub struct Card {
     pub trainer_effect_text: String,
     pub trainer_handler: String,
     pub trainer_effects: Vec<EffectKind>,
+    /// `legal` predicates for trainer cards (Item / Supporter / Tool).
+    /// Empty = always legal.  See `effects::legality`.
+    pub trainer_legal_conditions: Vec<LegalCondition>,
     pub ko_points: u8,
 }
 
@@ -100,10 +109,12 @@ impl CardDb {
     pub fn load(paths: &[&Path]) -> Self {
         let mut raw_cards: Vec<RawCard> = Vec::new();
         for path in paths {
-            if let Ok(content) = std::fs::read_to_string(path) {
-                if let Ok(cards) = serde_json::from_str::<Vec<RawCard>>(&content) {
-                    raw_cards.extend(cards);
-                }
+            match std::fs::read_to_string(path) {
+                Ok(content) => match serde_json::from_str::<Vec<RawCard>>(&content) {
+                    Ok(cards) => raw_cards.extend(cards),
+                    Err(err) => eprintln!("warning: failed to load {}: {}", path.display(), err),
+                },
+                Err(err) => eprintln!("warning: failed to load {}: {}", path.display(), err),
             }
         }
         Self::build_from_raw(raw_cards)
@@ -212,6 +223,7 @@ struct RawCard {
     abilities: Option<Vec<RawAbility>>,
     #[serde(rename = "evolvesFrom")]
     evolves_from: Option<String>,
+    #[allow(dead_code)] // present in JSON; reserved for future ex/rarity-based logic
     rarity: Option<String>,
 }
 
@@ -222,6 +234,10 @@ struct RawAttack {
     cost: Option<Vec<String>>,
     effect: Option<String>,
     handler: Option<String>,
+    /// Optional legality predicates (parallel to handler).  See
+    /// `effects::legality` for the predicate language.
+    #[serde(default)]
+    legal: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -229,6 +245,8 @@ struct RawAbility {
     name: Option<String>,
     effect: Option<String>,
     handler: Option<String>,
+    #[serde(default)]
+    legal: Option<Vec<String>>,
 }
 
 fn parse_damage(v: &serde_json::Value) -> i16 {
@@ -254,8 +272,21 @@ fn parse_cost(cost_list: &[String]) -> Vec<CostSymbol> {
 
 fn detect_is_passive(name: &str, effect_text: &str, handler: &str) -> bool {
     // Primary indicator: the handler string.
-    // Passive / auto-triggered handlers use a "passive_" prefix by convention.
-    if handler.split('|').any(|part| part.trim().starts_with("passive_")) {
+    // Auto-triggered abilities (passive, on-evolve, end-of-turn, etc.) cannot
+    // be activated by a player click — they fire on their own from the engine
+    // hook for the relevant event.  Identify them by handler-name prefix so
+    // legal_actions doesn't surface them as USE_ABILITY actions.
+    if handler.split('|').any(|part| {
+        let p = part.trim();
+        p.starts_with("passive_")
+            || p.starts_with("on_evolve_")
+            || p.starts_with("end_of_turn_")
+            // Nihilego More Poison: technically a passive aura ("takes +10
+            // damage from being Poisoned") that fires from the checkup
+            // pipeline.  Treat the bare `toxic_poison` handler as passive
+            // so it never surfaces as USE_ABILITY.
+            || p == "toxic_poison"
+    }) {
         return true;
     }
     // Secondary: well-known passive effect-text patterns.
@@ -266,6 +297,11 @@ fn detect_is_passive(name: &str, effect_text: &str, handler: &str) -> bool {
     }
     // "At the end of [your/each] turn" → auto-triggers, not a player choice.
     if low.contains("at the end of") {
+        return true;
+    }
+    // "When you play this Pokemon … to evolve" → on-evolve trigger
+    // (e.g. Charmeleon B2b-008 Ignition).  Fires once at evolution time only.
+    if low.contains("when you play this") && low.contains("to evolve") {
         return true;
     }
     // Legacy Poké-Body naming convention.
@@ -281,15 +317,15 @@ fn parse_card(raw: RawCard) -> Card {
     let subtype = raw.subtype.as_deref().unwrap_or("");
     let is_pokemon = card_type.eq_ignore_ascii_case("pokemon");
 
-    let is_ex = name.trim().ends_with(" ex") || name.trim().ends_with("-ex")
-        || raw.rarity.as_deref().map(|r| r.to_lowercase().contains("ex")).unwrap_or(false);
-    let is_mega_ex = {
-        let low = name.to_lowercase();
-        low.contains("mega") && low.contains("ex")
-    };
+    // Strict suffix-only check (case-insensitive) to avoid false positives from
+    // names like "Hex Maniac" or rarities containing the letters "ex".
+    let trimmed_lower = name.trim().to_lowercase();
+    let is_ex = trimmed_lower.ends_with(" ex") || trimmed_lower.ends_with("-ex");
+    let is_mega_ex = trimmed_lower.contains("mega") && is_ex;
 
     let (kind, stage, element, weakness, hp, retreat_cost, attacks, ability,
-         trainer_effect_text, trainer_handler, trainer_effects) = if is_pokemon {
+         trainer_effect_text, trainer_handler, trainer_effects,
+         trainer_legal_conditions) = if is_pokemon {
         let kind = CardKind::Pokemon;
         let stage = Stage::from_str(subtype);
         let element = raw.element.as_deref().and_then(Element::from_str);
@@ -302,9 +338,16 @@ fn parse_card(raw: RawCard) -> Card {
         let retreat_cost = match raw.retreat_cost.as_ref() {
             Some(serde_json::Value::Number(n)) => {
                 let v = n.as_u64().unwrap_or(0);
-                if v > 4 { 0u8 } else { v as u8 } // 999 means "can't retreat" -> treat as 0 for now
+                // Sentinel: 999 (or any value > 4) means "cannot retreat".
+                // Use u8::MAX so the engine can treat MAX as "no retreat allowed"
+                // rather than silently making the cost 0 (free retreat).
+                if v > 4 { u8::MAX } else { v as u8 }
             }
-            Some(serde_json::Value::String(s)) => s.parse::<u8>().unwrap_or(0),
+            Some(serde_json::Value::String(s)) => match s.parse::<u64>() {
+                Ok(v) if v > 4 => u8::MAX,
+                Ok(v) => v as u8,
+                Err(_) => 0,
+            },
             _ => 0,
         };
 
@@ -320,6 +363,9 @@ fn parse_card(raw: RawCard) -> Card {
             seen.insert(key);
             let handler = ra.handler.unwrap_or_default();
             let effects = parse_handler_string(&handler);
+            let legal_conditions = ra.legal.as_ref()
+                .map(|v| parse_legal_array(v))
+                .unwrap_or_default();
             attacks.push(Attack {
                 name: atk_name,
                 damage,
@@ -327,6 +373,7 @@ fn parse_card(raw: RawCard) -> Card {
                 effect_text: ra.effect.unwrap_or_default(),
                 handler,
                 effects,
+                legal_conditions,
             });
         }
 
@@ -335,14 +382,18 @@ fn parse_card(raw: RawCard) -> Card {
             abs.iter().find(|a| a.name.is_some() && a.effect.is_some()).map(|a| {
                 let handler = a.handler.clone().unwrap_or_default();
                 let effects = parse_handler_string(&handler);
+                let legal_conditions = a.legal.as_ref()
+                    .map(|v| parse_legal_array(v))
+                    .unwrap_or_default();
                 let ab_name = a.name.clone().unwrap_or_default();
                 let effect_text = a.effect.clone().unwrap_or_default();
                 let is_passive = detect_is_passive(&ab_name, &effect_text, &handler);
-                Ability { name: ab_name, effect_text, is_passive, handler, effects }
+                Ability { name: ab_name, effect_text, is_passive, handler, effects, legal_conditions }
             })
         });
 
-        (kind, stage, element, weakness, hp, retreat_cost, attacks, ability, String::new(), String::new(), vec![])
+        (kind, stage, element, weakness, hp, retreat_cost, attacks, ability,
+         String::new(), String::new(), vec![], vec![])
     } else {
         let kind = match subtype.to_lowercase().as_str() {
             "supporter" => CardKind::Supporter,
@@ -358,6 +409,11 @@ fn parse_card(raw: RawCard) -> Card {
             .and_then(|a| a.handler.clone())
             .unwrap_or_default();
         let trainer_effects = parse_handler_string(&trainer_handler);
+        let trainer_legal_conditions = raw.abilities.as_ref()
+            .and_then(|abs| abs.first())
+            .and_then(|a| a.legal.as_ref())
+            .map(|v| parse_legal_array(v))
+            .unwrap_or_default();
 
         // Fossil cards (e.g. Skull Fossil) have passive_ditto_impostor and are played
         // directly to the bench as a Basic Pokémon. Reclassify them so the engine
@@ -369,9 +425,10 @@ fn parse_card(raw: RawCard) -> Card {
         if let Some(hp) = fossil_hp {
             // Treat as a Basic Pokémon with the given HP and cannot retreat (cost=4).
             (CardKind::Pokemon, Some(crate::types::Stage::Basic), None, None,
-             hp, 4u8, vec![], None, String::new(), String::new(), vec![])
+             hp, 4u8, vec![], None, String::new(), String::new(), vec![], vec![])
         } else {
-            (kind, None, None, None, 0, 0, vec![], None, trainer_effect_text, trainer_handler, trainer_effects)
+            (kind, None, None, None, 0, 0, vec![], None,
+             trainer_effect_text, trainer_handler, trainer_effects, trainer_legal_conditions)
         }
     };
 
@@ -395,6 +452,7 @@ fn parse_card(raw: RawCard) -> Card {
         trainer_effect_text,
         trainer_handler,
         trainer_effects,
+        trainer_legal_conditions,
         ko_points,
     }
 }

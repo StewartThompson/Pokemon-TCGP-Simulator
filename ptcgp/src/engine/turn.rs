@@ -4,10 +4,30 @@
 
 use rand::seq::SliceRandom;
 use crate::card::CardDb;
-use crate::state::GameState;
+use crate::state::{GameState, PokemonSlot};
 use crate::types::GamePhase;
+use crate::effects::{EffectKind, EffectContext};
+use crate::effects::dispatch::apply_effects;
+use crate::actions::SlotRef;
 use super::checkup::resolve_between_turns;
 use super::ko::check_and_handle_kos;
+
+/// Promote a slot's `_incoming` two-phase next-turn flags to their active
+/// counterparts.  Called at start_turn for slots belonging to the player
+/// whose turn is starting (Bug 1 fix — flags now actually apply to the
+/// affected player rather than being cleared at the source player's turn-end).
+fn promote_slot_incoming_flags(slot: &mut PokemonSlot) {
+    slot.cant_attack_next_turn = slot.cant_attack_next_turn_incoming;
+    slot.cant_attack_next_turn_incoming = false;
+    slot.cant_retreat_next_turn = slot.cant_retreat_next_turn_incoming;
+    slot.cant_retreat_next_turn_incoming = false;
+    slot.prevent_damage_next_turn = slot.prevent_damage_next_turn_incoming;
+    slot.prevent_damage_next_turn_incoming = false;
+    slot.incoming_damage_reduction = slot.incoming_damage_reduction_incoming;
+    slot.incoming_damage_reduction_incoming = 0;
+    slot.attack_bonus_next_turn_self = slot.attack_bonus_next_turn_self_incoming;
+    slot.attack_bonus_next_turn_self_incoming = 0;
+}
 
 /// Called at the start of each turn:
 /// - Increments `turn_number` (first call takes it from -1 → 0).
@@ -24,16 +44,20 @@ pub fn start_turn(state: &mut GameState, db: &CardDb) {
     let current = state.current_player;
 
     // Increment turns_in_play and reset per-slot flags.
+    // Also promote per-slot two-phase next-turn flags from `_incoming` to
+    // active for the player whose turn is starting (Bug 1 fix).
     if let Some(ref mut slot) = state.players[current].active {
         slot.turns_in_play += 1;
         slot.evolved_this_turn = false;
         slot.ability_used_this_turn = false;
+        promote_slot_incoming_flags(slot);
     }
     for bench_slot in state.players[current].bench.iter_mut() {
         if let Some(ref mut slot) = bench_slot {
             slot.turns_in_play += 1;
             slot.evolved_this_turn = false;
             slot.ability_used_this_turn = false;
+            promote_slot_incoming_flags(slot);
         }
     }
 
@@ -51,6 +75,13 @@ pub fn start_turn(state: &mut GameState, db: &CardDb) {
     state.players[current].cant_play_supporter_this_turn =
         state.players[current].cant_play_supporter_incoming;
     state.players[current].cant_play_supporter_incoming = false;
+
+    // Reset cant_heal_this_turn for BOTH players each start_turn.  PassiveNoHealing
+    // (e.g. Claydol Heal Block) re-applies the flag whenever the passive
+    // dispatch fires; this reset prevents stale blocks from persisting across
+    // turns when the source Pokémon is no longer in play.
+    state.players[0].cant_heal_this_turn = false;
+    state.players[1].cant_heal_this_turn = false;
 
     // Promote incoming item-ban flag to "this turn".
     state.players[current].cant_play_items_this_turn =
@@ -107,7 +138,52 @@ pub fn end_turn(state: &mut GameState) {
     state.players[current].cant_play_items_this_turn = false;
     state.players[current].cant_attach_energy_this_turn = false;
 
+    // Consume the "attack ends turn after promotion" flag — once we've actually
+    // advanced past this turn, the trigger is satisfied.
+    state.attack_pending_advance = false;
+
     state.current_player = 1 - state.current_player;
+}
+
+/// Auto-fire end-of-turn ability effects on the current player's active Pokémon.
+///
+/// Currently triggers `EffectKind::EndOfTurnIfActiveDraw` (Suicune ex /
+/// Entei ex Legendary Pulse: "At the end of your turn, if this Pokémon
+/// is in the Active Spot, draw a card.").
+///
+/// Called from `advance_turn` between `resolve_between_turns` and `end_turn`,
+/// while `state.current_player` still refers to the player whose turn just
+/// ended.  Skipped if the active Pokémon was just KO'd (no slot present).
+pub fn trigger_end_of_turn_abilities(state: &mut GameState, db: &CardDb) {
+    let p = state.current_player;
+    let active = match state.players[p].active.as_ref() {
+        Some(s) => s,
+        None => return,
+    };
+    let card = match db.try_get_by_idx(active.card_idx) {
+        Some(c) => c,
+        None => return,
+    };
+    let ability = match card.ability.as_ref() {
+        Some(a) => a,
+        None => return,
+    };
+    // Pull out only the end-of-turn-trigger effects to fire.
+    let effects: Vec<EffectKind> = ability.effects.iter()
+        .filter(|e| matches!(e, EffectKind::EndOfTurnIfActiveDraw { .. }))
+        .cloned()
+        .collect();
+    if effects.is_empty() {
+        return;
+    }
+    let ctx = EffectContext {
+        acting_player: p,
+        source_ref: Some(SlotRef::active(p)),
+        target_ref: None,
+        extra_target_ref: None,
+        extra: Default::default(),
+    };
+    apply_effects(state, db, &effects, &ctx);
 }
 
 /// Full turn transition: checkup status effects → KO check → end_turn → start_turn.
@@ -125,6 +201,10 @@ pub fn advance_turn(state: &mut GameState, db: &CardDb) {
     if state.phase == GamePhase::AwaitingBenchPromotion {
         return;
     }
+
+    // End-of-turn ability triggers (e.g. Legendary Pulse) — fire before
+    // end_turn() switches current_player.
+    trigger_end_of_turn_abilities(state, db);
 
     end_turn(state);
 
@@ -161,11 +241,11 @@ mod tests {
         let mut state = GameState::new(42);
         state.phase = GamePhase::Main;
         state.turn_number = -1;
-        let deck: Vec<u16> = vec![bulbasaur.idx; 20];
+        let deck: smallvec::SmallVec<[u16; 20]> = std::iter::repeat(bulbasaur.idx).take(20).collect();
         state.players[0].deck = deck.clone();
         state.players[1].deck = deck;
-        state.players[0].energy_types = vec![Element::Grass];
-        state.players[1].energy_types = vec![Element::Grass];
+        state.players[0].energy_types = smallvec::smallvec![Element::Grass];
+        state.players[1].energy_types = smallvec::smallvec![Element::Grass];
         // Set active Pokemon for both players so the state is valid.
         state.players[0].active = Some(PokemonSlot::new(bulbasaur.idx, bulbasaur.hp));
         state.players[1].active = Some(PokemonSlot::new(bulbasaur.idx, bulbasaur.hp));
@@ -217,7 +297,7 @@ mod tests {
     fn start_turn_energy_is_set_from_pool() {
         let db = load_db();
         let mut state = make_state_with_deck(&db);
-        state.players[0].energy_types = vec![Element::Fire];
+        state.players[0].energy_types = smallvec::smallvec![Element::Fire];
         // Advance to a non-zero turn for player 0.
         start_turn(&mut state, &db); // turn 0
         end_turn(&mut state);
@@ -265,6 +345,54 @@ mod tests {
         assert!(!state.players[0].has_attached_energy);
         assert!(!state.players[0].has_played_supporter);
         assert!(!state.players[0].has_retreated);
+    }
+
+    // -- Bug 1: two-phase promotion of next-turn flags --
+    #[test]
+    fn incoming_next_turn_flags_promote_at_affected_player_start_turn() {
+        let db = load_db();
+        let mut state = make_state_with_deck(&db);
+
+        // Player 0's turn starts.
+        start_turn(&mut state, &db); // turn 0, current_player = 0
+
+        // Simulate an opponent effect setting the "incoming" cant_attack flag
+        // on player 1's active during player 0's turn.
+        state.players[1]
+            .active
+            .as_mut()
+            .unwrap()
+            .cant_attack_next_turn_incoming = true;
+
+        // End player 0's turn.
+        end_turn(&mut state);
+        // The incoming flag must NOT have been cleared by player 0's end_turn.
+        assert!(
+            state.players[1].active.as_ref().unwrap().cant_attack_next_turn_incoming,
+            "Incoming flag must survive the source player's end_turn"
+        );
+        assert!(
+            !state.players[1].active.as_ref().unwrap().cant_attack_next_turn,
+            "Active flag should not be set yet"
+        );
+
+        // Player 1's turn begins — incoming should promote to active.
+        start_turn(&mut state, &db);
+        assert!(
+            state.players[1].active.as_ref().unwrap().cant_attack_next_turn,
+            "Active flag should now be set on the affected player"
+        );
+        assert!(
+            !state.players[1].active.as_ref().unwrap().cant_attack_next_turn_incoming,
+            "Incoming flag should be cleared after promotion"
+        );
+
+        // Player 1 ends their turn — active flag should be cleared now.
+        end_turn(&mut state);
+        assert!(
+            !state.players[1].active.as_ref().unwrap().cant_attack_next_turn,
+            "Active flag should be cleared at end of affected player's turn"
+        );
     }
 
     #[test]

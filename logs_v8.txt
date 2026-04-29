@@ -1,0 +1,24 @@
+Compute device: training=Metal (Apple GPU) 🍎, inference=CPU (rayon parallel)
+Initializing fresh gen_000/ (random weights)
+
+================ GEN 1 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 24786 samples from 400 games in 341.7s (1.2 games/s)
+  train:     batches=400  loss_win=0.1344  loss_prize=0.1359  loss_hp=0.0412  loss_policy=1.1423  (2.4s)
+  eval:      vs_mcts-raw:720 = 55.2% score  (250 games, 86.2s)  ★ NEW BEST
+  saved:     ../checkpoints_v8/gen_001/  (replay_size=24786)
+  best:      saved to ../checkpoints_v8/best/  (vs_mcts-raw:720 55.2%)
+
+================ GEN 2 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 19370 samples from 400 games in 307.1s (1.3 games/s)
+  train:     batches=400  loss_win=0.1330  loss_prize=0.1355  loss_hp=0.0498  loss_policy=1.0697  (3.3s)
+  eval:      vs_mcts-raw:720 = 60.1% score  (250 games, 47.9s)  ★ NEW BEST
+  saved:     ../checkpoints_v8/gen_002/  (replay_size=44156)
+  best:      saved to ../checkpoints_v8/best/  (vs_mcts-raw:720 60.1%)
+
+================ GEN 3 ================  (400 self-play games, 720 MCTS sims/move)
+  self-play: 19100 samples from 400 games in 313.4s (1.3 games/s)
+  train:     batches=400  loss_win=0.1371  loss_prize=0.1425  loss_hp=0.0571  loss_policy=1.0264  (3.6s)
+  eval:      vs_mcts-raw:720 = 56.9% score  (250 games, 54.0s)
+  saved:     ../checkpoints_v8/gen_003/  (replay_size=63256)
+
+================ GEN 4 ================  (400 self-play games, 720 MCTS sims/move)
